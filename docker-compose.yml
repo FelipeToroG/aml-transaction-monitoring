@@ -1,0 +1,49 @@
+# Local development stack: API + Streamlit investigator UI + shared
+# SQLite volume. Production deployments swap the SQLite volume for a
+# Postgres service and replace the build paths with image tags pushed
+# to the deployment registry.
+
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aml-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Required: provide via host environment (Compose substitutes from
+      # the shell's ANTHROPIC_API_KEY when present). The default empty
+      # string is harmless — the /health endpoint reports llm_configured=False.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Persistence path inside the container; volume mounts it to host
+      # ./data/runtime/aml_alerts.db so the database survives rebuilds.
+      DATABASE_URL: "sqlite:////app/data/runtime/aml_alerts.db"
+      MODEL_PATH: "/app/models/ensemble.pkl"
+      LOG_LEVEL: "INFO"
+      ENVIRONMENT: "local-compose"
+      WEBHOOK_ENABLED: "${WEBHOOK_ENABLED:-false}"
+      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+    volumes:
+      # Host-mounted writable volume for SQLite. The runtime container
+      # user (uid 10001) needs to be able to write here; create the
+      # directory with permissive ownership on the host before first run.
+      - ./data/runtime:/app/data/runtime
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    container_name: aml-ui
+    ports:
+      - "8501:8501"
+    environment:
+      # The UI reaches the API via the Compose service name, not localhost.
+      API_BASE_URL: "http://api:8000"
+    depends_on:
+      - api
+    restart: unless-stopped

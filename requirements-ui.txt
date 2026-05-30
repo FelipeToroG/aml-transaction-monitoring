@@ -1,0 +1,10 @@
+# Streamlit investigator UI dependencies (pinned).
+# Standalone install set: the UI talks to the API over HTTP and does not
+# import any model or training code directly.
+
+streamlit==1.39.0
+pandas==2.2.3
+numpy==1.26.4
+plotly==5.24.1
+httpx==0.27.2
+pyyaml==6.0.2

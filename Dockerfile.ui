@@ -1,0 +1,42 @@
+# Streamlit investigator UI image.
+# Separate from the API image because the UI dependency surface is
+# narrower (no ML libraries) and they have different scaling envelopes
+# in production: the API scales with transaction volume; the UI scales
+# with investigator concurrency, which is two orders of magnitude lower.
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+# Streamlit and its transitive dependencies do not require system-level
+# build tools beyond what the slim base provides.
+RUN groupadd --gid 10001 aml \
+    && useradd --uid 10001 --gid aml --shell /bin/false --create-home aml
+
+WORKDIR /app
+COPY requirements-ui.txt .
+RUN pip install --upgrade pip \
+    && pip install -r requirements-ui.txt
+
+COPY ui/ ./ui/
+
+RUN chown -R aml:aml /app
+USER aml
+
+EXPOSE 8501
+
+# Streamlit's own health endpoint is at /_stcore/health. We probe it
+# rather than the page HTML because the HTML can take longer to render
+# than a health probe should tolerate.
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python -c "import httpx, sys; r = httpx.get('http://localhost:8501/_stcore/health', timeout=4); sys.exit(0 if r.status_code == 200 else 1)" \
+    || exit 1
+
+CMD ["streamlit", "run", "ui/app.py", \
+     "--server.port", "8501", \
+     "--server.address", "0.0.0.0", \
+     "--server.headless", "true", \
+     "--browser.gatherUsageStats", "false"]

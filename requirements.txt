@@ -1,0 +1,43 @@
+# Training-time dependencies (pinned for reproducibility).
+# The API and UI install their own subsets so the inference container is
+# slim and the training environment stays separable from the runtime.
+
+# --- Data ---
+pandas==2.2.3
+numpy==1.26.4
+pyarrow==17.0.0
+scipy==1.14.1
+
+# --- Modeling ---
+scikit-learn==1.5.2
+xgboost==2.1.2
+lightgbm==4.5.0
+imbalanced-learn==0.12.4
+pyod==2.0.2
+
+# --- Graph features ---
+networkx==3.4.2
+
+# --- Hyperparameter search & experiment tracking ---
+optuna==4.0.0
+mlflow==2.17.2
+
+# --- Explainability & calibration ---
+shap==0.46.0
+
+# --- Visualization (notebooks & eval reports) ---
+matplotlib==3.9.2
+seaborn==0.13.2
+plotly==5.24.1
+
+# --- Notebooks ---
+jupyter==1.1.1
+ipykernel==6.29.5
+
+# --- Serialization & configuration ---
+joblib==1.4.2
+pyyaml==6.0.2
+
+# --- Testing (training-side asserts) ---
+pytest==8.3.3
+pytest-cov==5.0.0

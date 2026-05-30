@@ -1,0 +1,59 @@
+# =============================================================================
+# Cost matrix for the cost-weighted Precision@k objective and the
+# investigator-hour simulator.
+# =============================================================================
+# Consumed by src/evaluation/metrics.py and src/evaluation/investigator_simulator.py.
+# All values are USD unless otherwise noted. Defaults are calibrated to publicly
+# reported AML operations benchmarks for mid-tier payments platforms
+# (Stripe Radar-class scale). Operators override these per institution by
+# providing a deployment-specific overlay; the defaults below are the assumed
+# baseline for the documented evaluation results.
+
+economic_assumptions:
+  # Average illicit dollars per flagged-but-missed transaction. Derived from
+  # FinCEN-published SAR aggregate statistics. Significantly higher than per-
+  # transaction fraud loss because laundering events tend to involve
+  # coordinated multi-transaction flows.
+  average_illicit_dollars_per_missed_alert: 8500.0
+
+  # Investigator fully loaded hourly cost (salary + benefits + overhead).
+  # Calibrated to a Tier-2 compliance analyst in a US-based fintech ops team.
+  investigator_hourly_rate_usd: 95.0
+
+  # Average minutes an investigator spends on an alert from queue claim to
+  # disposition (cleared / escalated / SAR-filed). Includes narrative review,
+  # transaction history check, and customer profile review.
+  average_review_minutes_per_alert: 14.0
+
+regulatory_cost:
+  # Annualized expected regulatory penalty per missed laundering case if the
+  # case eventually surfaces in a regulator-led examination. Captures both
+  # the fine and the reputational / remediation cost. Calibrated to OCC and
+  # FinCEN published enforcement averages over the last five years.
+  expected_penalty_per_undetected_case: 25000.0
+  # Fraction of missed cases that ultimately surface in regulatory review.
+  detection_probability_per_missed_case: 0.12
+
+operational:
+  # Investigator review capacity per analyst per day. Used by the
+  # investigator simulator to compute realistic alert-queue depth and to
+  # calibrate Precision@k where k = analyst_count * daily_capacity.
+  daily_alert_capacity_per_analyst: 48
+  # Number of full-time-equivalent analysts on the AML monitoring queue.
+  analyst_count: 8
+
+derived:
+  # Stored explicitly rather than computed at runtime so the values appear in
+  # serialized eval reports for audit traceability. The arithmetic below is
+  # the authoritative reference; src/utils/config.py asserts these match.
+  #
+  # false_negative_cost_usd
+  #   = average_illicit_dollars_per_missed_alert
+  #   + (expected_penalty_per_undetected_case * detection_probability_per_missed_case)
+  #   = 8500 + (25000 * 0.12) = 11500
+  false_negative_cost_usd: 11500.0
+  #
+  # false_positive_cost_usd
+  #   = investigator_hourly_rate_usd * (average_review_minutes_per_alert / 60.0)
+  #   = 95 * (14 / 60) = 22.17
+  false_positive_cost_usd: 22.17

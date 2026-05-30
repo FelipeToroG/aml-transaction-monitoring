@@ -1,0 +1,89 @@
+# =============================================================================
+# Runtime configuration for the AML scoring API.
+# =============================================================================
+# Loaded once at service startup by src/utils/config.py. Values that
+# meaningfully differ between environments are sourced from environment
+# variables (see _env keys); values that are stable across environments
+# live directly in this file. This separation lets operators tune the
+# environment-specific knobs without redeploying a config-bundled image.
+
+service:
+  name: aml-transaction-monitoring
+  version: "0.1.0"
+  environment_override_env: ENVIRONMENT
+
+model:
+  artifact_path_env: MODEL_PATH
+  artifact_path_default: models/ensemble.pkl
+  # The model version is read from the metadata embedded in the serialized
+  # artifact at load time; this value documents the expected schema version
+  # the service was built against. A mismatch at load time fails fast.
+  expected_schema_version: 1
+
+scoring:
+  # Ensemble combines the anomaly and supervised scores with these weights.
+  # The weights are validated against the cost-weighted Precision@k objective
+  # during training and refreshed in this file by scripts/update_results.py.
+  anomaly_weight: 0.35
+  supervised_weight: 0.65
+  # Decision threshold is overridable per environment. When null, the API
+  # uses the cost-optimized value selected during training and persisted in
+  # the model artifact metadata.
+  threshold_override: null
+
+triage:
+  llm_provider: anthropic
+  primary_model: claude-sonnet-4-5
+  eval_model: claude-haiku-4-5
+  max_tokens: 1500
+  # Deterministic outputs only: the narrator must produce identical write-ups
+  # for identical evidence bundles to support reproducibility in audits.
+  temperature: 0.0
+  # Refuse to generate a case narrative when the evidence confidence falls
+  # below this threshold. Refusal is logged but not surfaced as an error to
+  # the caller — it indicates the alert requires manual triage without LLM
+  # assistance and the operator dashboard tracks the refusal rate.
+  min_evidence_confidence: 0.6
+  # Maximum attempts to obtain a schema-valid narrative before surfacing a
+  # structured failure to the caller. Each retry uses a stricter framing.
+  max_validation_retries: 2
+
+persistence:
+  url_env: DATABASE_URL
+  url_default: sqlite:///./aml_alerts.db
+  # SQLAlchemy connection pool size. SQLite ignores this; Postgres respects it.
+  pool_size: 10
+  pool_pre_ping: true
+  # Audit log retention. Regulators require a five-year minimum for SAR-adjacent
+  # data, so 1825 days is the safer default than any shorter value.
+  audit_retention_days: 1825
+
+webhook:
+  enabled_env: WEBHOOK_ENABLED
+  url_env: WEBHOOK_URL
+  # Bounded retry: three attempts with exponential backoff capped at eight
+  # seconds. Webhook dispatch is fire-and-forget with respect to the scoring
+  # path; delivery failures degrade silently to the operator metrics dashboard.
+  max_retries: 3
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 8.0
+  request_timeout_seconds: 5.0
+
+observability:
+  prometheus_enabled: true
+  langfuse_enabled: true
+  # Structured-logging keys included on every log line for downstream
+  # aggregation. The service writes JSON when ENVIRONMENT != local.
+  log_keys:
+    - service.name
+    - service.version
+    - request.id
+    - alert.id
+    - model.version
+
+logging:
+  level_env: LOG_LEVEL
+  level_default: INFO
+  # `json` is the production default; `console` is more readable during
+  # local development and is selected automatically when ENVIRONMENT=local.
+  format: json

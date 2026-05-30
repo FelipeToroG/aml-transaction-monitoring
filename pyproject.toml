@@ -1,0 +1,67 @@
+# Project metadata and tool configuration for the AML transaction monitoring service.
+# Using the PEP 621 [project] table with the setuptools build backend keeps the
+# repo compatible with `pip install -e .` for editable installs during development
+# while leaving the pinned requirements files as the authoritative source of
+# dependency versions for reproducible training and deployment.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aml-transaction-monitoring"
+version = "0.1.0"
+description = "Production AML transaction monitoring with hybrid scoring, Claude-powered case triage, and a full investigator feedback loop."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Felipe Toro", email = "ftoro26@gmail.com" }]
+keywords = [
+    "aml",
+    "anti-money-laundering",
+    "fraud-detection",
+    "machine-learning",
+    "mlops",
+    "fintech",
+    "payments",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/FelipeToroG/aml-transaction-monitoring"
+Issues = "https://github.com/FelipeToroG/aml-transaction-monitoring/issues"
+
+[tool.setuptools.packages.find]
+# The deployable package lives under src/. Tests, notebooks, and the UI are
+# intentionally excluded from the installable distribution because they are
+# development-time artifacts, not runtime modules.
+where = ["."]
+include = ["src*"]
+exclude = ["tests*", "notebooks*", "ui*"]
+
+[tool.pytest.ini_options]
+# Strict configuration surfaces test-suite drift early: a typoed marker or
+# unknown ini option becomes an error rather than a silent shrug.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: tests that exercise multiple components together",
+    "slow: tests that take more than a few seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Conservative ruleset chosen to flag real issues without producing noise on
+# legitimate ML code patterns (e.g., short variable names in math-heavy code).
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "ARG"]
+ignore = ["E501"]

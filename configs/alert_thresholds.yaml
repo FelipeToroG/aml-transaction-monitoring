@@ -1,0 +1,59 @@
+# =============================================================================
+# Alert tiering and threshold configuration.
+# =============================================================================
+# Consumed by src/api/routes/score.py to assign a tier to each scored
+# transaction and by the Streamlit UI to color-code the queue. Thresholds are
+# calibrated during training to the cost-weighted Precision@k objective and
+# can be overridden per environment. The defaults below correspond to the
+# training cohort's optimal cut points and are refreshed by
+# scripts/update_results.py after each training run.
+
+tiers:
+
+  - name: tier_3_critical
+    min_score: 0.85
+    max_score: 1.00
+    # Auto-escalates to the human-in-the-loop investigator queue and
+    # immediately dispatches the case-narrative-bearing webhook.
+    auto_escalate: true
+    triage_synchronously: true
+    target_review_sla_hours: 1
+    expected_share_of_volume: 0.005
+
+  - name: tier_2_high
+    min_score: 0.60
+    max_score: 0.85
+    # Queued for investigator review with same-day SLA. Triage runs via
+    # background task so the LLM round-trip does not block the scoring path.
+    auto_escalate: false
+    triage_synchronously: false
+    target_review_sla_hours: 8
+    expected_share_of_volume: 0.020
+
+  - name: tier_1_medium
+    min_score: 0.30
+    max_score: 0.60
+    # Bulk-reviewed within the daily cycle. Narrative generation is deferred
+    # until investigator claim to conserve LLM cost.
+    auto_escalate: false
+    triage_synchronously: false
+    target_review_sla_hours: 24
+    expected_share_of_volume: 0.075
+
+  - name: suppressed
+    min_score: 0.00
+    max_score: 0.30
+    # Not surfaced to investigators. Suppression rationale is logged to the
+    # audit log so any subsequent surfacing of the transaction (e.g., via a
+    # downstream alert) can reconstruct the original decision.
+    auto_escalate: false
+    triage_synchronously: false
+    target_review_sla_hours: null
+    expected_share_of_volume: 0.900
+
+ensemble_floor:
+  # Minimum ensemble score below which the narrator is never invoked, even
+  # if a downstream caller explicitly requests triage. Protects against
+  # operator misconfiguration that would burn LLM budget on transactions
+  # with no signal.
+  triage_invocation_floor: 0.30
