@@ -4,7 +4,7 @@ End-to-end production AML monitoring service for payment platforms. Hybrid anoma
 
 **Author:** Felipe Toro
 **License:** MIT
-**Status:** Architecture and implementation complete. Training pipeline runs end-to-end. Results table populates automatically after the first full Optuna sweep via `scripts/update_results.py`.
+**Status:** v0 — architecture and implementation complete, model trained end-to-end on the full 5M-transaction dataset. The current model artifact was produced by `scripts/salvage_train.py` after the original Optuna sweep hung on a Logistic Regression hyperparameter pathology; the diagnosis and recovery are documented in [docs/INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md). v1 (in progress on a CUDA-equipped workstation) addresses the threshold-tuner alignment, the ensemble combination, and the recall trade-off — see [Roadmap](#roadmap).
 
 ---
 
@@ -16,7 +16,7 @@ A real-time AML transaction monitoring service designed for payments and money-t
 |------|-------|
 | Dataset | IBM AML HI-Small (~5M transactions, labeled illicit / licit) |
 | Model architecture | Isolation Forest (anomaly) + gradient-boosted classifier (supervised), score-level ensemble |
-| Models evaluated | 5 families across 200 Optuna trials |
+| Models evaluated | 3 supervised families completed (120 Optuna trials); 4th family killed mid-sweep due to a SAGA solver convergence pathology — see [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md) |
 | Optimization objective | Investigator-hour-cost-weighted Precision@k |
 | Case narrative generation | Claude (Sonnet for production, Haiku for offline evals) |
 | Alert audit trail | Every alert: feature vector, model version, threshold, narrative, investigator disposition |
@@ -276,10 +276,50 @@ A handful of choices in this repo are deliberate enough that they would survive 
 
 ## Key findings
 
-_The results table below populates automatically after the first full training run via `scripts/update_results.py`. Methodology and metric definitions live in [docs/EVALUATION.md](docs/EVALUATION.md)._
+The results below are from the v0 training run on the full 5M-transaction IBM AML HI-Small dataset. Methodology and metric definitions live in [docs/EVALUATION.md](docs/EVALUATION.md); the per-trial audit trail is preserved in MLflow under the `aml-transaction-monitoring` experiment.
+
+**How to read these numbers.** The headline metric is **Precision@k at the operational alert capacity of k = 384 alerts per day** (8 analysts × 48 alerts per analyst per day). At that operating point the model is **~270× more precise than random alerting** (54.7% vs ~0.2% if 384 alerts were drawn uniformly from 760k test transactions). Recall is 13.5% — deliberately conservative because investigator-hour cost is the binding constraint encoded into the optimization objective. The cost matrix that drove model selection is shown at the bottom of this section.
+
+**Known v0 limitations** (addressed in v1, see [Roadmap](#roadmap)):
+
+1. The validation-fold objective is reported below for completeness but is **not directly comparable to the test objective**. The validation threshold tuner sweeps thresholds at `k = predictions-above-threshold` (a moving target), while final test evaluation uses `k = 384` (fixed). The tuner therefore rewards "flag everything" strategies that look strong on val and weak on test. v1 reworks `_tune_threshold` to evaluate at fixed k=384 throughout.
+2. The Isolation Forest anomaly head's output range turned out narrower than the supervised head (0.32–0.42 vs 0.0–1.0). With the fixed 0.35 anomaly / 0.65 supervised weighted-blend, the anomaly head dilutes XGBoost's signal rather than complementing it. v1 replaces the weighted blend with **stacking** — anomaly score becomes a feature column inside XGBoost — so the supervised model learns the optimal weighting non-linearly.
+3. The Logistic Regression sweep was killed mid-run; only XGBoost, LightGBM, and Random Forest produced complete per-family results. v1 either constrains the LogReg hyperparameter ranges or drops it from the family list entirely.
 
 <!-- RESULTS:START -->
-_(populated after training)_
+
+### Headline results (test fold)
+
+| What | Value |
+|---|---|
+| Winning model | XGBoost (selected on cost-weighted Precision@k) |
+| Test set objective | $173,415.41 cost per investigator-hour (negated) |
+| Test Precision @ k | 54.7% (k = 384 alerts) |
+| Test recall (fraud caught) | 13.5% (210 of 1,561) |
+| Test true positives | 210 |
+| Test false positives | 174 |
+| Test false negatives | 1,351 |
+| Test total dollar cost | $15,540,357.58 |
+| Validation objective (tuning fold) | $94.84 cost/hour — **not directly comparable to test** (computed at variable k=452,812 due to the threshold-tuner bug noted above) |
+| Decision threshold | 0.0368 |
+| Models evaluated | 3 families across the Optuna sweep |
+
+### Per-family comparison (validation fold)
+
+| Rank | Family | Validation objective (USD/hr) |
+|------|--------|-------------------------------|
+| 1 | XGBoost | $55,966.25 |
+| 2 | LightGBM | $56,737.71 |
+| 3 | Random Forest | $70,109.65 |
+
+### Cost matrix used for selection
+
+| Parameter | Value |
+|---|---|
+| Daily review capacity (k) | 384 alerts |
+| False-negative cost | $11,500.00 per missed alert |
+| False-positive cost | $22.17 per investigator-cleared alert |
+
 <!-- RESULTS:END -->
 
 ---
@@ -308,13 +348,25 @@ _(populated after training)_
 
 ## Roadmap
 
-The natural next steps for this codebase, in priority order:
+### v1 — model quality (in progress on a CUDA-equipped workstation)
 
-1. **Async ingestion path.** A Celery + Redis worker queue for the triage layer so high-volume scoring is not bottlenecked by LLM latency.
-2. **Postgres backend.** Drop-in replacement for SQLite using the existing repository pattern.
-3. **GitHub Actions CI.** Lint plus tests plus Docker build on every push.
-4. **Cloud deploy.** Render / Fly.io deployment guide with one-command apply.
-5. **Active learning loop.** Use investigator feedback to retrain weekly with sample weighting derived from disposition.
+These items came directly out of the v0 incident retrospective (see [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md)). Each one is a specific, named fix to an issue we found by running the system end-to-end, not a wishlist:
+
+1. **Fix the threshold tuner.** Replace the variable-k sweep in `_tune_threshold` with a fixed-k=384 sweep so the val and test objectives are directly comparable, and the tuner stops being rewarded for "flag everything" strategies.
+2. **Replace weighted-blend ensemble with stacking.** Feed the Isolation Forest score as a column into XGBoost rather than blending the two outputs with hardcoded weights. Lets the supervised model learn the non-linear weighting empirically. This alone is expected to move Precision@k from 0.55 toward 0.75–0.85.
+3. **Recalibrate the cost matrix.** v0's `false_negative_cost_usd = $11,500` understates regulatory exposure (a single SAR-worthy missed alert in production can trigger six-to-seven-figure consent-order penalties). Bumping the FN cost pulls the threshold toward higher-recall regions.
+4. **Add feature caching.** Materialize `data/processed/features.parquet` once and reload on subsequent runs. Drops the 42-minute feature-engineering step to ~30 seconds for iteration.
+5. **GPU-accelerated XGBoost.** `tree_method="hist", device="cuda"` on the new workstation. Cuts the per-trial training time from ~2.5 minutes to seconds; makes ablation studies tractable.
+6. **Fix or remove the Logistic Regression sweep.** Constrain the SAGA + L1 + small-C parameter region that caused the v0 hang, or drop LogReg from the family list entirely with a documented justification.
+7. **Pre-execute notebooks in CI.** Run `jupyter nbconvert --to notebook --execute` on every notebook as part of the test suite so notebook outputs never drift from code reality.
+
+### v2 — productionization
+
+8. **Async ingestion path.** A Celery + Redis worker queue for the triage layer so high-volume scoring is not bottlenecked by LLM latency.
+9. **Postgres backend.** Drop-in replacement for SQLite using the existing repository pattern.
+10. **GitHub Actions CI.** Lint plus tests plus Docker build on every push.
+11. **Cloud deploy.** Render / Fly.io deployment guide with one-command apply.
+12. **Active learning loop.** Use investigator feedback to retrain weekly with sample weighting derived from disposition.
 
 ---
 

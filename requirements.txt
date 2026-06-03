@@ -8,6 +8,14 @@ numpy==1.26.4
 pyarrow==17.0.0
 scipy==1.14.1
 
+# --- Dataset fetch ---
+# The Kaggle CLI is used by scripts/download_data.sh to fetch the IBM
+# AML HI-Small dataset. ``>=1.8.0`` is required so the script works
+# with the modern named-API-token system; the older Legacy API
+# Credentials flow is being deprecated by Kaggle and should not be
+# the basis for a project that future contributors need to reproduce.
+kaggle>=1.8.0,<2.0
+
 # --- Modeling ---
 scikit-learn==1.5.2
 xgboost==2.1.2

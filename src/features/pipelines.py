@@ -224,6 +224,18 @@ def build_feature_pipeline(
         ]
     )
 
+    # Column selection: we pass explicit name tuples rather than using
+    # sklearn.compose.make_column_selector(dtype_include=...) because
+    # an AML model is audit-defensible only if the feature set is
+    # traceable. Compliance officers and MRM reviewers reading the
+    # ensemble metadata need to see "the model uses these N named
+    # features," not "the model uses whatever happened to be numeric
+    # in the input." Explicit enumeration also fails loudly when an
+    # upstream schema change adds or removes a column, where dtype-
+    # based selection would silently absorb it and produce a model
+    # whose feature set has quietly drifted. The performance cost of
+    # the explicit form vs make_column_selector is zero; the audit
+    # benefit is meaningful.
     column_transformer = ColumnTransformer(
         transformers=[
             ("numerical", numerical_pipeline, list(numerical_columns)),

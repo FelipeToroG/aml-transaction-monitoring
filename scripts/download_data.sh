@@ -42,9 +42,20 @@ if ! command -v kaggle >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ ! -f "${HOME}/.kaggle/kaggle.json" ]]; then
-    echo "ERROR: Kaggle credentials not found at ~/.kaggle/kaggle.json" >&2
-    echo "Create at https://www.kaggle.com/settings/account and save with chmod 600." >&2
+# Kaggle's CLI supports two authentication file formats:
+#   * Legacy ``~/.kaggle/kaggle.json`` (deprecated by Kaggle, kept for
+#     backward compatibility with operators on older setups).
+#   * Modern ``~/.kaggle/access_token`` (the named-API-token system
+#     introduced in Kaggle CLI 1.8.0).
+# We accept either. The CLI itself picks whichever is present, so no
+# further action is needed once one of the two exists.
+if [[ ! -f "${HOME}/.kaggle/kaggle.json" && ! -f "${HOME}/.kaggle/access_token" ]]; then
+    echo "ERROR: Kaggle credentials not found." >&2
+    echo "Expected either ~/.kaggle/kaggle.json (legacy) or" >&2
+    echo "~/.kaggle/access_token (recommended)." >&2
+    echo "Create a token at https://www.kaggle.com/settings/account and" >&2
+    echo "save with chmod 600. The 'API Tokens (Recommended)' section is" >&2
+    echo "the future-proof choice; legacy is being deprecated." >&2
     exit 1
 fi
 
@@ -71,15 +82,22 @@ if [[ ! -f "${TARGET_FILE}" ]]; then
     exit 1
 fi
 
-EXPECTED_HEADER="Timestamp,From Bank,Account,To Bank,Account.1,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering"
+# The raw CSV intentionally has two columns both literally named
+# ``Account`` — one for the source bank's account, one for the
+# destination's. pandas disambiguates these to ``Account`` and
+# ``Account.1`` at read time, which is what the rest of the codebase
+# expects. This shell-level validator runs *before* pandas touches the
+# file (via ``head -n 1``), so it compares against the raw,
+# pre-disambiguation header.
+EXPECTED_HEADER="Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering"
 OBSERVED_HEADER="$(head -n 1 "${TARGET_FILE}")"
 
 if [[ "${OBSERVED_HEADER}" != "${EXPECTED_HEADER}" ]]; then
     echo "ERROR: Downloaded file has an unexpected header." >&2
     echo "  Expected: ${EXPECTED_HEADER}" >&2
     echo "  Observed: ${OBSERVED_HEADER}" >&2
-    echo "The upstream dataset schema may have changed. Update src/data/loader.py" >&2
-    echo "to match before proceeding." >&2
+    echo "The upstream dataset schema may have changed. Update both this" >&2
+    echo "script's EXPECTED_HEADER and src/data/loader.py RAW_COLUMNS to match." >&2
     exit 1
 fi
 
