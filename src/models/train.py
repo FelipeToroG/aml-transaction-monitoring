@@ -41,7 +41,12 @@ from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 
 from src import __version__
-from src.data.loader import DEFAULT_RAW_PATH, LABEL_COLUMN, DataLoader
+from src.data.loader import (
+    DEFAULT_RAW_PATH,
+    LABEL_COLUMN,
+    TIMESTAMP_COLUMN,
+    DataLoader,
+)
 from src.data.splits import temporal_train_val_test_split
 from src.evaluation.metrics import (
     CostMatrix,
@@ -63,6 +68,17 @@ logger = logging.getLogger(__name__)
 # module is the dominant signal in the console output.
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+# Engineered-feature cache. Building the engineered frame is the slow
+# step (rolling per-entity aggregates over millions of rows), so the
+# result is memoised to parquet alongside a JSON sidecar. The cache key
+# is the pair (raw CSV mtime, sample_fraction): either value changing
+# invalidates the cache. The sample_fraction half is load-bearing,
+# without it a fractionally sampled frame from an iteration run could be
+# served to a full-data run and silently train on a sliver of the rows.
+_FEATURE_CACHE_DIR = Path("data/processed")
+_FEATURE_CACHE_FRAME_PATH = _FEATURE_CACHE_DIR / "features.parquet"
+_FEATURE_CACHE_META_PATH = _FEATURE_CACHE_DIR / "features.meta.json"
+
 
 def main(
     *,
@@ -73,6 +89,7 @@ def main(
     model_output_path: Path = Path("models/ensemble.pkl"),
     summary_output_path: Path = Path("mlruns/training_summary.json"),
     mlflow_experiment: str = "aml-transaction-monitoring",
+    sample_fraction: float | None = None,
 ) -> dict[str, Any]:
     """Run the end-to-end training pipeline.
 
@@ -96,8 +113,28 @@ def main(
     logger.info("Loaded %d transactions; positive rate %.5f",
                 len(frame), frame[LABEL_COLUMN].mean())
 
-    logger.info("Engineering features (this is the slow step)...")
-    bundle = build_engineered_frame(frame)
+    if sample_fraction is not None:
+        # Pipeline-verification tool only: this trims wall-clock so the
+        # slow feature build runs over a fraction of the rows during
+        # plumbing checks. Metrics produced at small fractions are not
+        # meaningful, and a small early slice may contain very few (or
+        # zero) positives given the ~0.1% base rate.
+        #
+        # The slice is a contiguous early time window, not a random
+        # sample. Engineered features are rolling per-entity aggregates
+        # and the train/val/test split is chronological, so random
+        # sampling would tear holes in entity histories and scramble the
+        # temporal ordering the split depends on. Sorting by timestamp
+        # and taking the leading rows preserves both.
+        original_rows = len(frame)
+        frame = frame.sort_values(TIMESTAMP_COLUMN, kind="stable")
+        frame = frame.head(int(original_rows * sample_fraction)).reset_index(drop=True)
+        logger.info("Subsampled to %d/%d rows (fraction=%.4f, contiguous early slice)",
+                    len(frame), original_rows, sample_fraction)
+
+    bundle = _load_or_build_features(
+        frame, raw_path=raw_path, sample_fraction=sample_fraction
+    )
     logger.info("Engineered %d feature columns", len(bundle.numerical_columns) + len(bundle.categorical_columns))
 
     logger.info("Performing temporal train/val/test split")
@@ -284,6 +321,83 @@ def main(
 # ---------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------
+
+
+def _load_or_build_features(
+    frame: pd.DataFrame,
+    *,
+    raw_path: Path,
+    sample_fraction: float | None,
+) -> FeatureBundle:
+    """Return the engineered bundle, reusing the parquet cache when valid.
+
+    The cache is reused only when both the raw CSV mtime and the
+    sample_fraction match the sidecar a prior run wrote. A mismatch on
+    either rebuilds and overwrites, which is what keeps a sampled feature
+    frame from ever being served to a full run.
+    """
+    raw_mtime = raw_path.stat().st_mtime
+    cached = _read_feature_cache(raw_mtime=raw_mtime, sample_fraction=sample_fraction)
+    if cached is not None:
+        logger.info("Feature cache hit at %s; skipping the slow feature build",
+                    _FEATURE_CACHE_FRAME_PATH)
+        return cached
+
+    logger.info("Feature cache miss; engineering features (this is the slow step)...")
+    bundle = build_engineered_frame(frame)
+    _write_feature_cache(bundle, raw_mtime=raw_mtime, sample_fraction=sample_fraction)
+    logger.info("Rebuilt feature cache at %s", _FEATURE_CACHE_FRAME_PATH)
+    return bundle
+
+
+def _read_feature_cache(
+    *, raw_mtime: float, sample_fraction: float | None
+) -> FeatureBundle | None:
+    """Reconstruct a FeatureBundle from the cache when its key matches.
+
+    Returns None when the cache is absent or stale so the caller falls
+    back to a rebuild. The frame is restored from parquet while the
+    column-list metadata travels in the sidecar, so the reconstructed
+    bundle is indistinguishable from a freshly built one and every
+    downstream consumer stays unchanged.
+    """
+    if not (_FEATURE_CACHE_FRAME_PATH.exists() and _FEATURE_CACHE_META_PATH.exists()):
+        return None
+
+    meta = json.loads(_FEATURE_CACHE_META_PATH.read_text())
+    # Both halves of the key must match. Comparing sample_fraction here is
+    # the guard that stops a fractionally sampled frame from satisfying a
+    # full-data request (None vs a float never compares equal).
+    if (
+        meta.get("raw_mtime") != raw_mtime
+        or meta.get("sample_fraction") != sample_fraction
+    ):
+        return None
+
+    frame = pd.read_parquet(_FEATURE_CACHE_FRAME_PATH)
+    return FeatureBundle(
+        frame=frame,
+        numerical_columns=tuple(meta["numerical_columns"]),
+        categorical_columns=tuple(meta["categorical_columns"]),
+    )
+
+
+def _write_feature_cache(
+    bundle: FeatureBundle, *, raw_mtime: float, sample_fraction: float | None
+) -> None:
+    """Persist the engineered frame and the sidecar that keys the cache."""
+    _FEATURE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    bundle.frame.to_parquet(_FEATURE_CACHE_FRAME_PATH)
+    # The column lists are recorded so a cache hit can rebuild the bundle
+    # without re-deriving them, and the key fields so the next run can
+    # decide hit-or-rebuild without touching the (large) parquet file.
+    meta = {
+        "raw_mtime": raw_mtime,
+        "sample_fraction": sample_fraction,
+        "numerical_columns": list(bundle.numerical_columns),
+        "categorical_columns": list(bundle.categorical_columns),
+    }
+    _FEATURE_CACHE_META_PATH.write_text(json.dumps(meta, indent=2))
 
 
 def _run_family_sweep(
@@ -606,6 +720,16 @@ if __name__ == "__main__":
         default=Path("mlruns/training_summary.json"),
         help="Where to write the training summary JSON.",
     )
+    parser.add_argument(
+        "--sample-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Train on a contiguous early time slice of this fraction of the "
+            "rows (e.g. 0.02). Pipeline-verification tool only: metrics at "
+            "small fractions are not meaningful. Default trains on full data."
+        ),
+    )
     args = parser.parse_args()
 
     main(
@@ -615,4 +739,5 @@ if __name__ == "__main__":
         api_config_path=args.api_config,
         model_output_path=args.model_output,
         summary_output_path=args.summary_output,
+        sample_fraction=args.sample_fraction,
     )
