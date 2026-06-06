@@ -89,7 +89,12 @@ class AnomalyScorer:
             contamination=self.contamination,
             max_features=self.max_features,
             random_state=self.random_state,
-            n_jobs=-1,
+            # Single-process fit on purpose. n_jobs=-1 spawned a worker per
+            # thread (32 here), each memory-mapping the 3.55M-row feature
+            # matrix, which OOM-killed the v1 full train (105GB total-vm at the
+            # kill). With the small max_samples subsample a single process is
+            # fast anyway, so the parallelism only bought a memory blowup.
+            n_jobs=1,
         )
 
     def fit(self, X: np.ndarray) -> "AnomalyScorer":
