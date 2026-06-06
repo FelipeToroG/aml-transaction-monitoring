@@ -31,10 +31,18 @@ families:
       low: 100
       high: 500
       step: 50
+    # Absolute subsample size per tree, NOT a fraction. Isolation Forest is
+    # canonically built on small subsamples (scikit-learn defaults to 256):
+    # small subsamples are what give the algorithm its isolation property and
+    # keep memory flat. A fraction of this dataset is both statistically wrong
+    # and operationally fatal here: on the 3.55M-row training fold a fraction
+    # of ~0.65 isolated ~2.3M samples per tree, driving resident memory past
+    # 46GB and OOM-killing the v1 full train. An absolute 256-1024 range keeps
+    # detection quality high and memory bounded regardless of fold size.
     max_samples:
-      type: float
-      low: 0.3
-      high: 1.0
+      type: int
+      low: 256
+      high: 1024
     contamination:
       type: float
       low: 0.001
