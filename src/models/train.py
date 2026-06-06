@@ -235,10 +235,19 @@ def main(
         supervised_val = final_classifier.predict_proba(X_val)[:, 1]
         combined_val = anomaly_weight * anomaly_val + supervised_weight * supervised_val
 
+        # The fold's fixed operational alert budget: the team reviews
+        # exactly k_per_day alerts, and this is the same k the metric
+        # defaults to for the final test evaluation below. Computing it
+        # once here and threading it into both the threshold tuner and the
+        # test eval makes the shared budget explicit, so val tuning and
+        # test selection provably operate at an identical k.
+        operational_k = cost_matrix.k_per_day
+
         decision_threshold, threshold_eval = _tune_threshold(
             scores=combined_val,
             y_true=y_val,
             cost_matrix=cost_matrix,
+            operational_k=operational_k,
         )
         logger.info("Optimal threshold: %.4f (objective %.4f)",
                     decision_threshold, threshold_eval["objective_cost_per_investigator_hour_usd"])
@@ -255,6 +264,7 @@ def main(
             y_true=y_test,
             scores=combined_test,
             cost_matrix=cost_matrix,
+            k=operational_k,
         )
         logger.info("Test objective: %.4f precision@k: %.4f",
                     test_eval["objective_cost_per_investigator_hour_usd"],
@@ -586,47 +596,51 @@ def _tune_threshold(
     scores: np.ndarray,
     y_true: np.ndarray,
     cost_matrix: CostMatrix,
-    n_candidates: int = 200,
+    operational_k: int,
 ) -> tuple[float, dict[str, Any]]:
-    """Sweep candidate decision thresholds and return the cost-optimal one.
+    """Set the decision threshold at the fixed operational alert capacity.
 
-    The threshold is the operational knob — it controls how many alerts
-    investigators see per day. Tuning it on val data (not training)
-    avoids overfitting the threshold to the training distribution.
+    At a fixed alert budget the threshold is a capacity constraint, not an
+    optimisation target: investigators review exactly ``operational_k``
+    alerts per fold, so the threshold is whatever score admits that many
+    and no more. There is nothing to sweep.
+
+    The v0 tuner swept candidate thresholds and evaluated each at a
+    *variable* k equal to the count of predictions above it, then returned
+    the threshold whose objective was best at its own k. That let it settle
+    on a near-zero threshold flagging most of the validation fold: zero
+    false negatives spread over a huge investigator-hour denominator looked
+    optimal, but the chosen k bore no relation to the fixed k=384/day the
+    model is actually evaluated and deployed at, so val and test were never
+    comparable. See the "threshold tuner misaligned with operational k"
+    finding in docs/INCIDENT_REPORT.md.
+
+    ``operational_k`` is supplied by the caller from the same cost matrix
+    that drives the final test evaluation, so val tuning and test eval
+    select on an identical alert budget.
     """
-    # Candidate thresholds: equally spaced across the actual score
-    # distribution rather than [0, 1] uniform, so the search budget
-    # concentrates where decisions actually flip.
-    candidates = np.linspace(
-        float(np.quantile(scores, 0.01)),
-        float(np.quantile(scores, 0.99)),
-        n_candidates,
+    n = len(scores)
+    # A fold smaller than the daily budget cannot surface more alerts than
+    # it has rows, so clamp rather than letting the rank index run off the
+    # end of the array.
+    k = min(operational_k, n)
+
+    # Threshold = the k-th largest score (descending rank k). With distinct
+    # scores this admits exactly k alerts: (scores >= threshold).sum() == k.
+    # np.partition puts the (n - k)-th ascending element in its sorted slot
+    # (that element is the k-th largest) in O(n), avoiding a full sort.
+    # Boundary ties can push the count slightly above k when several rows
+    # share the k-th score; that is accepted and documented rather than
+    # broken with an arbitrary tie-break.
+    threshold = float(np.partition(scores, n - k)[n - k])
+
+    result = cost_weighted_precision_at_k(
+        y_true=y_true,
+        scores=scores,
+        cost_matrix=cost_matrix,
+        k=k,
     )
-
-    best_threshold = float(candidates[0])
-    best_objective = -np.inf
-    best_result: dict[str, Any] = {}
-    for threshold in candidates:
-        predictions = (scores >= threshold).astype(int)
-        # k for evaluation = number of alerts produced at this threshold.
-        # Falls back to a minimum of 1 to keep the metric well-defined
-        # in the degenerate case where the threshold suppresses every
-        # alert.
-        k = max(int(predictions.sum()), 1)
-        if k > len(y_true):
-            continue
-        result = cost_weighted_precision_at_k(
-            y_true=y_true,
-            scores=scores,
-            cost_matrix=cost_matrix,
-            k=k,
-        )
-        if result["objective_cost_per_investigator_hour_usd"] > best_objective:
-            best_objective = result["objective_cost_per_investigator_hour_usd"]
-            best_threshold = float(threshold)
-            best_result = result
-
-    return best_threshold, best_result
+    return threshold, result
 
 
 def _build_training_summary(

@@ -232,10 +232,16 @@ def main(
     supervised_val = final_classifier.predict_proba(X_val)[:, 1]
     combined_val = anomaly_weight * anomaly_val + supervised_weight * supervised_val
 
+    # Same fixed operational alert budget the metric uses for the test
+    # evaluation below; thread it into both so val tuning and test eval
+    # select at an identical k.
+    operational_k = cost_matrix.k_per_day
+
     decision_threshold, threshold_eval = _tune_threshold(
         scores=combined_val,
         y_true=y_val,
         cost_matrix=cost_matrix,
+        operational_k=operational_k,
     )
     logger.info(
         "Optimal threshold: %.4f (val objective %.4f)",
@@ -255,6 +261,7 @@ def main(
         y_true=y_test,
         scores=combined_test,
         cost_matrix=cost_matrix,
+        k=operational_k,
     )
     logger.info(
         "Test objective: %.4f  precision@k: %.4f",
