@@ -52,9 +52,12 @@ operational:
 derived:
   # Stored explicitly rather than computed at runtime so the values appear in
   # serialized eval reports for audit traceability, and because metrics.py
-  # reads false_negative_cost_usd directly from this block. The arithmetic
-  # below is the authoritative reference; its inputs live in the
-  # economic_assumptions and regulatory_cost sections above.
+  # reads these costs directly from this block. The arithmetic below is the
+  # authoritative reference; its inputs live in the economic_assumptions and
+  # regulatory_cost sections above. CostMatrix.from_yaml recomputes both
+  # derived costs from those inputs on load and refuses to construct (raises
+  # ValueError) on any mismatch beyond one cent, so these values cannot
+  # silently drift from the assumptions they summarise.
   #
   # false_negative_cost_usd is the sum of two honestly-distinct terms:
   #   sourced illicit loss (FinCEN SAR statistics):
