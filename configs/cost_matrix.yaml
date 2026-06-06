@@ -26,13 +26,20 @@ economic_assumptions:
   average_review_minutes_per_alert: 14.0
 
 regulatory_cost:
-  # Annualized expected regulatory penalty per missed laundering case if the
-  # case eventually surfaces in a regulator-led examination. Captures both
-  # the fine and the reputational / remediation cost. Calibrated to OCC and
-  # FinCEN published enforcement averages over the last five years.
+  # Order-of-magnitude planning figure for the regulatory penalty exposed by a
+  # single missed laundering case that later surfaces in a regulator-led
+  # examination: the fine plus reputational / remediation cost. Anchored on the
+  # range of OCC and FinCEN consent-order / AML penalties, NOT an audited
+  # per-case number. Real enforcement actions span five to seven figures; this
+  # is a deliberately conservative central estimate for planning.
   expected_penalty_per_undetected_case: 25000.0
-  # Fraction of missed cases that ultimately surface in regulatory review.
-  detection_probability_per_missed_case: 0.12
+  # Probability that a given missed alert contributes to an enforcement action.
+  # A planning figure, not a measured rate. Raised from the v0 value of 0.12 to
+  # 0.30 because v0 materially understated regulatory tail risk: missed SARs
+  # that aggregate into a pattern are far more likely to draw an exam finding
+  # than the old figure implied. See the "cost matrix understates FN regulatory
+  # exposure" finding in docs/INCIDENT_REPORT.md.
+  detection_probability_per_missed_case: 0.30
 
 operational:
   # Investigator review capacity per analyst per day. Used by the
@@ -44,14 +51,25 @@ operational:
 
 derived:
   # Stored explicitly rather than computed at runtime so the values appear in
-  # serialized eval reports for audit traceability. The arithmetic below is
-  # the authoritative reference; src/utils/config.py asserts these match.
+  # serialized eval reports for audit traceability, and because metrics.py
+  # reads false_negative_cost_usd directly from this block. The arithmetic
+  # below is the authoritative reference; its inputs live in the
+  # economic_assumptions and regulatory_cost sections above.
   #
-  # false_negative_cost_usd
-  #   = average_illicit_dollars_per_missed_alert
-  #   + (expected_penalty_per_undetected_case * detection_probability_per_missed_case)
-  #   = 8500 + (25000 * 0.12) = 11500
-  false_negative_cost_usd: 11500.0
+  # false_negative_cost_usd is the sum of two honestly-distinct terms:
+  #   sourced illicit loss (FinCEN SAR statistics):
+  #     average_illicit_dollars_per_missed_alert             = 8500
+  #   expected regulatory exposure (planning figures, not audited):
+  #     expected_penalty_per_undetected_case
+  #       * detection_probability_per_missed_case = 25000 * 0.30 = 7500
+  #   total = 8500 + 7500 = 16000
+  #
+  # The total falls out of the inputs; it is not reverse-engineered to a round
+  # number. The regulatory term exists so the optimizer stops treating a missed
+  # SAR as merely the lost transaction value: the real tail risk of an
+  # undetected laundering pattern is a six-to-seven-figure enforcement penalty,
+  # and the FN cost must carry that weight to rank alerts sensibly.
+  false_negative_cost_usd: 16000.0
   #
   # false_positive_cost_usd
   #   = investigator_hourly_rate_usd * (average_review_minutes_per_alert / 60.0)
