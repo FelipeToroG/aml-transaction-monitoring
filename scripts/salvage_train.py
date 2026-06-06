@@ -50,7 +50,6 @@ from src.models.train import (
     _build_training_summary,
     _configure_logging,
     _default_hyperparameters_from_search_space,
-    _fit_anomaly_component,
     _fit_supervised_component,
     _load_yaml,
     _tune_threshold,
@@ -146,7 +145,8 @@ def main(
 
     # ----- Load configs -----------------------------------------------
     model_config = _load_yaml(model_config_path)
-    api_config = _load_yaml(api_config_path)
+    # api_config is no longer read here: stacking removed the blend weights
+    # the trainer used to pull from it. The path arg is kept for CLI stability.
     cost_matrix = CostMatrix.from_yaml(str(cost_matrix_path))
 
     # ----- Load and prepare data --------------------------------------
@@ -189,6 +189,13 @@ def main(
     train_val_frame = pd.concat([split.train, split.val], ignore_index=True)
     y_train_val = np.concatenate([y_train, y_val])
 
+    # The Isolation Forest is not swept; its config is the midpoint of the
+    # search-space ranges and it is fit inside the feature pipeline as the
+    # stacking feature, mirroring the production driver.
+    anomaly_hp = _default_hyperparameters_from_search_space(
+        model_config["families"]["isolation_forest"]
+    )
+
     logger.info(
         "Refitting %s on train+val (%d rows) with isotonic calibration (3-fold)...",
         WINNING_FAMILY,
@@ -201,36 +208,24 @@ def main(
         family=WINNING_FAMILY,
         hyperparameters=WINNING_HYPERPARAMETERS,
         calibrate=True,
+        anomaly_hp=anomaly_hp,
     )
     logger.info("Supervised head fit complete")
 
-    # ----- Fit anomaly head on train+val ------------------------------
-    # Mirrors the production driver exactly: the anomaly head consumes
-    # the same fitted feature pipeline as the supervised head so both
-    # score on a commensurable feature space.
-    logger.info("Fitting Isolation Forest anomaly head")
-    anomaly_search = model_config["families"]["isolation_forest"]
-    anomaly_hp = _default_hyperparameters_from_search_space(anomaly_search)
-    anomaly_scorer = _fit_anomaly_component(
-        bundle=bundle,
-        pipeline=final_pipeline,
-        frame=train_val_frame,
-        hyperparameters=anomaly_hp,
-    )
-    logger.info("Anomaly head fit complete")
+    # The Isolation Forest now lives inside the fitted pipeline as the
+    # stacking feature; read the fitted scorer back out for the metadata.
+    anomaly_scorer = final_pipeline.named_steps["anomaly"].anomaly_scorer_
 
     # ----- Tune decision threshold on val -----------------------------
     logger.info("Tuning decision threshold on validation fold")
-    anomaly_weight = api_config["scoring"]["anomaly_weight"]
-    supervised_weight = api_config["scoring"]["supervised_weight"]
-
     feature_columns = list(
         bundle.numerical_columns + bundle.categorical_columns
     )
+    # Stacking: the anomaly score is a feature inside final_pipeline, so the
+    # risk score is the calibrated supervised probability on the augmented
+    # matrix. No post-hoc weighted blend.
     X_val = final_pipeline.transform(split.val[feature_columns])
-    anomaly_val = anomaly_scorer.score(X_val)
-    supervised_val = final_classifier.predict_proba(X_val)[:, 1]
-    combined_val = anomaly_weight * anomaly_val + supervised_weight * supervised_val
+    combined_val = final_classifier.predict_proba(X_val)[:, 1]
 
     # Same fixed operational alert budget the metric uses for the test
     # evaluation below; thread it into both so val tuning and test eval
@@ -252,11 +247,7 @@ def main(
     # ----- Evaluate on held-out test fold -----------------------------
     logger.info("Evaluating on held-out test fold")
     X_test = final_pipeline.transform(split.test[feature_columns])
-    anomaly_test = anomaly_scorer.score(X_test)
-    supervised_test = final_classifier.predict_proba(X_test)[:, 1]
-    combined_test = (
-        anomaly_weight * anomaly_test + supervised_weight * supervised_test
-    )
+    combined_test = final_classifier.predict_proba(X_test)[:, 1]
     test_eval = cost_weighted_precision_at_k(
         y_true=y_test,
         scores=combined_test,
@@ -275,8 +266,6 @@ def main(
         fitted_pipeline=final_pipeline,
         fitted_anomaly=anomaly_scorer,
         fitted_classifier=final_classifier,
-        anomaly_weight=anomaly_weight,
-        supervised_weight=supervised_weight,
         decision_threshold=decision_threshold,
         selected_family=WINNING_FAMILY,
         selected_hyperparameters=WINNING_HYPERPARAMETERS,

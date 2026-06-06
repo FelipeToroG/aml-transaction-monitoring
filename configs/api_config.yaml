@@ -15,17 +15,16 @@ service:
 model:
   artifact_path_env: MODEL_PATH
   artifact_path_default: models/ensemble.pkl
-  # The model version is read from the metadata embedded in the serialized
-  # artifact at load time; this value documents the expected schema version
-  # the service was built against. A mismatch at load time fails fast.
-  expected_schema_version: 1
+  # Documents the schema version the service was built against; must track
+  # ensemble.SCHEMA_VERSION. The fail-fast on a mismatched artifact is
+  # enforced in AMLEnsemble.load() against that code constant (not against
+  # this value), so this key is for operator visibility and audit records.
+  expected_schema_version: 2
 
 scoring:
-  # Ensemble combines the anomaly and supervised scores with these weights.
-  # The weights are validated against the cost-weighted Precision@k objective
-  # during training and refreshed in this file by scripts/update_results.py.
-  anomaly_weight: 0.35
-  supervised_weight: 0.65
+  # The ensemble stacks the Isolation Forest score as a feature inside the
+  # supervised model rather than blending two scores, so there are no
+  # combination weights to configure here (removed with schema v2).
   # Decision threshold is overridable per environment. When null, the API
   # uses the cost-optimized value selected during training and persisted in
   # the model artifact metadata.

@@ -11,10 +11,11 @@ score every incoming transaction. It composes three layers:
 3. The fitted **supervised classifier** producing a calibrated ``[0, 1]``
    laundering probability.
 
-The two component scores are combined with weights tuned during training
-to maximise the cost-weighted Precision@k objective, and the combined
-score is compared against the decision threshold to produce the binary
-alert decision.
+The Isolation Forest score is fed into the supervised classifier as a
+stacking feature, so the classifier learns how to weight it; the
+calibrated classifier probability is the risk score, compared against the
+decision threshold to produce the binary alert decision. There is no
+post-hoc weighted blend.
 
 Serialisation
 -------------
@@ -49,9 +50,11 @@ from src.models.anomaly import AnomalyScorer
 from src.models.classifier import get_classifier_info
 
 # Embedded schema version. Any breaking change to the ensemble's
-# serialised shape increments this; the loader refuses to deserialise
-# an artifact whose schema version does not match the running service.
-SCHEMA_VERSION: Final[int] = 1
+# serialised shape increments this; the loader refuses to deserialise an
+# artifact whose schema version does not match the running service. v2
+# dropped the weighted-blend fields (anomaly_weight / supervised_weight /
+# ensemble_weights) when the Isolation Forest became a stacking feature.
+SCHEMA_VERSION: Final[int] = 2
 
 
 @dataclass(slots=True)
@@ -74,7 +77,6 @@ class EnsembleMetadata:
     selected_classifier_hyperparameters: dict[str, Any]
     anomaly_metadata: dict[str, Any]
     classifier_metadata: dict[str, Any]
-    ensemble_weights: dict[str, float]
     decision_threshold: float
     eval_metrics: dict[str, float]
 
@@ -88,29 +90,25 @@ class AMLEnsemble:
     called by the API at inference time.
 
     The feature pipeline, anomaly scorer, and supervised classifier are
-    public attributes so the test suite and notebooks can inspect them.
-    The combination weights and threshold are also public for the same
-    reason.
+    public attributes so the test suite and notebooks can inspect them. The
+    anomaly scorer is the same object embedded in the feature pipeline (a
+    reference for metadata and introspection, not a second scoring path); the
+    threshold is public for the same reason.
     """
 
     feature_pipeline: Pipeline
     anomaly_scorer: AnomalyScorer
     supervised_classifier: BaseEstimator
-    anomaly_weight: float
-    supervised_weight: float
     decision_threshold: float
     feature_columns: tuple[str, ...]
     metadata: EnsembleMetadata | None = field(default=None)
 
     def score(self, raw_frame: pd.DataFrame) -> np.ndarray:
-        """Return the combined risk score for every transaction.
+        """Return the risk score for every transaction.
 
-        Pipeline:
-
-        1. Build engineered features from the raw frame.
-        2. Apply the fitted feature pipeline to produce the model matrix.
-        3. Score with both components.
-        4. Combine the scores with the configured weights.
+        Under stacking the risk score is the calibrated supervised
+        probability on the augmented matrix (the feature pipeline appends the
+        Isolation Forest score as a feature), so there is no post-hoc blend.
 
         Parameters
         ----------
@@ -122,34 +120,40 @@ class AMLEnsemble:
         Returns
         -------
         np.ndarray
-            Combined risk scores in ``[0, 1]``. Shape ``(n_rows,)``.
+            Risk scores in ``[0, 1]``. Shape ``(n_rows,)``.
         """
-        # Engineer features. For batch inference this is one feature
-        # pass over the whole batch — efficient. For single-transaction
-        # inference the entity rolling features see only the current
-        # transaction (no history); the runtime serving path documented
-        # in the README's roadmap addresses this by maintaining a
-        # rolling feature-store cache. For batch scoring (the common
-        # production pattern for AML monitoring), the in-batch context
-        # is sufficient.
+        risk, _ = self.score_components(raw_frame)
+        return risk
+
+    def score_components(
+        self, raw_frame: pd.DataFrame
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(risk_score, anomaly_score)`` from one pipeline transform.
+
+        The anomaly score is read from the trailing column the feature
+        pipeline appends — the exact value the supervised model consumed — so
+        the component surfaced to investigators provably cannot drift from the
+        score that drove the decision. Both arrays have shape ``(n_rows,)``.
+        """
+        # Engineer features. For batch inference this is one feature pass over
+        # the whole batch. For single-transaction inference the entity rolling
+        # features see only the current transaction (no history); the README
+        # roadmap's feature-store cache addresses that. For batch scoring (the
+        # common AML monitoring pattern) the in-batch context is sufficient.
         bundle = build_engineered_frame(raw_frame)
 
-        # Restrict to the columns the pipeline was fit on so a frame
-        # carrying additional columns (e.g., a downstream join added
-        # context) does not confuse the ColumnTransformer.
+        # Restrict to the columns the pipeline was fit on so a frame carrying
+        # extra columns (e.g. a downstream join) does not confuse the
+        # ColumnTransformer.
         feature_subset = bundle.frame[list(self.feature_columns)]
 
-        # Apply preprocessing. The pipeline was fit during training;
-        # ``transform`` (not ``fit_transform``) ensures we never refit
-        # on inference data.
-        X = self.feature_pipeline.transform(feature_subset)
-
-        # Score with each component. ``predict_proba``'s second column
-        # is the positive-class probability — the laundering probability.
-        anomaly_scores = self.anomaly_scorer.score(X)
-        supervised_proba = self.supervised_classifier.predict_proba(X)[:, 1]
-
-        return self._combine_scores(anomaly_scores, supervised_proba)
+        # ``transform`` (not ``fit_transform``): never refit on inference data.
+        # The output is the augmented matrix; its last column is the
+        # AnomalyScoreAppender's calibrated anomaly score.
+        X_aug = np.asarray(self.feature_pipeline.transform(feature_subset))
+        risk = self.supervised_classifier.predict_proba(X_aug)[:, 1]
+        anomaly = X_aug[:, -1]
+        return risk, anomaly
 
     def predict(
         self, raw_frame: pd.DataFrame, *, threshold: float | None = None
@@ -176,19 +180,6 @@ class AMLEnsemble:
             threshold if threshold is not None else self.decision_threshold
         )
         return (scores >= effective_threshold).astype(np.int8)
-
-    def _combine_scores(
-        self, anomaly_scores: np.ndarray, supervised_scores: np.ndarray
-    ) -> np.ndarray:
-        """Weighted score-level ensemble combination.
-
-        The combination is intentionally simple: a weighted convex sum.
-        More elaborate schemes (stacking, rank-based fusion) were
-        evaluated during model selection and did not outperform the
-        weighted sum on the cost-weighted Precision@k objective once
-        both components were independently calibrated.
-        """
-        return self.anomaly_weight * anomaly_scores + self.supervised_weight * supervised_scores
 
     def save(self, path: Path | str) -> None:
         """Serialise the ensemble to disk with joblib.
@@ -241,8 +232,6 @@ def build_ensemble_from_components(
     fitted_pipeline: Pipeline,
     fitted_anomaly: AnomalyScorer,
     fitted_classifier: BaseEstimator,
-    anomaly_weight: float,
-    supervised_weight: float,
     decision_threshold: float,
     selected_family: str,
     selected_hyperparameters: dict[str, Any],
@@ -268,10 +257,6 @@ def build_ensemble_from_components(
         selected_classifier_hyperparameters=selected_hyperparameters,
         anomaly_metadata=fitted_anomaly.get_metadata(),
         classifier_metadata=get_classifier_info(fitted_classifier),
-        ensemble_weights={
-            "anomaly": anomaly_weight,
-            "supervised": supervised_weight,
-        },
         decision_threshold=decision_threshold,
         eval_metrics=eval_metrics,
     )
@@ -280,8 +265,6 @@ def build_ensemble_from_components(
         feature_pipeline=fitted_pipeline,
         anomaly_scorer=fitted_anomaly,
         supervised_classifier=fitted_classifier,
-        anomaly_weight=anomaly_weight,
-        supervised_weight=supervised_weight,
         decision_threshold=decision_threshold,
         feature_columns=tuple(bundle.numerical_columns + bundle.categorical_columns),
         metadata=metadata,

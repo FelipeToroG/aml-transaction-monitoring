@@ -57,7 +57,6 @@ from src.features.pipelines import (
     build_engineered_frame,
     build_feature_pipeline,
 )
-from src.models.anomaly import AnomalyScorer
 from src.models.classifier import build_classifier
 from src.models.ensemble import build_ensemble_from_components
 
@@ -102,7 +101,8 @@ def main(
 
     # ----- Load configs -----------------------------------------------
     model_config = _load_yaml(model_config_path)
-    api_config = _load_yaml(api_config_path)
+    # api_config is no longer read here: stacking removed the blend weights
+    # the trainer used to pull from it. The path arg is kept for CLI stability.
     cost_matrix = CostMatrix.from_yaml(str(cost_matrix_path))
 
     # ----- Load and prepare data --------------------------------------
@@ -165,6 +165,26 @@ def main(
             }
         )
 
+        # ----- Precompute the stacking feature once -------------------
+        # The Isolation Forest is not swept (the supervised side dominates
+        # the objective), so its config is the midpoint of the search-space
+        # ranges, computed once and shared by the sweep-time stacking feature
+        # and the final model so both train against the same anomaly signal.
+        anomaly_hp = _default_hyperparameters_from_search_space(
+            model_config["families"]["isolation_forest"]
+        )
+        # Preprocessing and the IF are family-independent and the IF is not
+        # swept, so fit them once and reuse the augmented train/val matrices
+        # across every family's trials. This collapses the IF fit from
+        # (families x trials) to one and drops the per-trial preprocessing
+        # refit the old loop paid for nothing.
+        X_train_aug, X_val_aug = _build_sweep_matrices(
+            bundle=bundle,
+            split_train=split.train,
+            split_val=split.val,
+            anomaly_hp=anomaly_hp,
+        )
+
         # ----- Optuna sweep per family --------------------------------
         family_winners: dict[str, dict[str, Any]] = {}
         for family, search_space in model_config["families"].items():
@@ -178,10 +198,9 @@ def main(
             best_trial_info = _run_family_sweep(
                 family=family,
                 search_space=search_space,
-                bundle=bundle,
-                split_train=split.train,
-                split_val=split.val,
+                X_train=X_train_aug,
                 y_train=y_train,
+                X_val=X_val_aug,
                 y_val=y_val,
                 cost_matrix=cost_matrix,
                 global_cfg=model_config["global"],
@@ -210,30 +229,23 @@ def main(
             family=winning_family,
             hyperparameters=winning_info["hyperparameters"],
             calibrate=True,
+            anomaly_hp=anomaly_hp,
         )
 
-        # ----- Fit anomaly head on train+val --------------------------
-        logger.info("Fitting Isolation Forest anomaly head")
-        anomaly_search = model_config["families"]["isolation_forest"]
-        anomaly_hp = _default_hyperparameters_from_search_space(anomaly_search)
-        anomaly_scorer = _fit_anomaly_component(
-            bundle=bundle,
-            pipeline=final_pipeline,
-            frame=train_val_frame,
-            hyperparameters=anomaly_hp,
-        )
+        # The Isolation Forest now lives inside the fitted pipeline as the
+        # stacking feature. Read the fitted scorer back out for the ensemble
+        # metadata and audit record; it is not a separate scoring path.
+        anomaly_scorer = final_pipeline.named_steps["anomaly"].anomaly_scorer_
 
         # ----- Tune decision threshold on val -------------------------
         logger.info("Tuning decision threshold on validation fold")
-        anomaly_weight = api_config["scoring"]["anomaly_weight"]
-        supervised_weight = api_config["scoring"]["supervised_weight"]
+        feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
 
-        X_val = final_pipeline.transform(
-            split.val[list(bundle.numerical_columns + bundle.categorical_columns)]
-        )
-        anomaly_val = anomaly_scorer.score(X_val)
-        supervised_val = final_classifier.predict_proba(X_val)[:, 1]
-        combined_val = anomaly_weight * anomaly_val + supervised_weight * supervised_val
+        # Stacking: the anomaly score is a feature inside final_pipeline, so
+        # the risk score is just the calibrated supervised probability on the
+        # augmented matrix. There is no post-hoc weighted blend.
+        X_val_final = final_pipeline.transform(split.val[feature_columns])
+        combined_val = final_classifier.predict_proba(X_val_final)[:, 1]
 
         # The fold's fixed operational alert budget: the team reviews
         # exactly k_per_day alerts, and this is the same k the metric
@@ -254,12 +266,8 @@ def main(
 
         # ----- Evaluate on test ---------------------------------------
         logger.info("Evaluating on held-out test fold")
-        X_test = final_pipeline.transform(
-            split.test[list(bundle.numerical_columns + bundle.categorical_columns)]
-        )
-        anomaly_test = anomaly_scorer.score(X_test)
-        supervised_test = final_classifier.predict_proba(X_test)[:, 1]
-        combined_test = anomaly_weight * anomaly_test + supervised_weight * supervised_test
+        X_test_final = final_pipeline.transform(split.test[feature_columns])
+        combined_test = final_classifier.predict_proba(X_test_final)[:, 1]
         test_eval = cost_weighted_precision_at_k(
             y_true=y_test,
             scores=combined_test,
@@ -276,8 +284,6 @@ def main(
             fitted_pipeline=final_pipeline,
             fitted_anomaly=anomaly_scorer,
             fitted_classifier=final_classifier,
-            anomaly_weight=anomaly_weight,
-            supervised_weight=supervised_weight,
             decision_threshold=decision_threshold,
             selected_family=winning_family,
             selected_hyperparameters=winning_info["hyperparameters"],
@@ -414,21 +420,22 @@ def _run_family_sweep(
     *,
     family: str,
     search_space: dict[str, Any],
-    bundle: FeatureBundle,
-    split_train: pd.DataFrame,
-    split_val: pd.DataFrame,
+    X_train: np.ndarray,
     y_train: np.ndarray,
+    X_val: np.ndarray,
     y_val: np.ndarray,
     cost_matrix: CostMatrix,
     global_cfg: dict[str, Any],
 ) -> dict[str, Any]:
     """Run an Optuna sweep for a single classifier family.
 
-    Each trial: sample hyperparameters → fit pipeline + classifier on
-    train → score val → cost-weighted Precision@k. The best trial wins
+    Preprocessing and the Isolation Forest stacking feature are fit once by
+    the caller and passed in as the augmented ``X_train`` / ``X_val``
+    matrices, so each trial only fits and scores the supervised classifier:
+    sample hyperparameters → fit on the augmented train matrix → score the
+    augmented val matrix → cost-weighted Precision@k. The best trial wins
     the family.
     """
-    feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
 
     def objective(trial: optuna.Trial) -> float:
         # Sample hyperparameters per the search space definition. The
@@ -441,15 +448,7 @@ def _run_family_sweep(
             random_state=global_cfg["random_state"],
             calibrate=False,  # calibration is applied to the final winner
         )
-
-        pipeline = build_feature_pipeline(
-            numerical_columns=bundle.numerical_columns,
-            categorical_columns=bundle.categorical_columns,
-        )
-        X_train = pipeline.fit_transform(split_train[feature_columns])
         classifier.fit(X_train, y_train)
-
-        X_val = pipeline.transform(split_val[feature_columns])
         proba = classifier.predict_proba(X_val)[:, 1]
         result = cost_weighted_precision_at_k(
             y_true=y_val,
@@ -552,12 +551,19 @@ def _fit_supervised_component(
     family: str,
     hyperparameters: dict[str, Any],
     calibrate: bool,
+    anomaly_hp: dict[str, Any],
 ) -> tuple[Pipeline, BaseEstimator]:
-    """Fit the feature pipeline and supervised classifier on the provided fold."""
+    """Fit the augmented feature pipeline and supervised classifier on a fold.
+
+    The pipeline includes the Isolation Forest stacking step (``anomaly_hp``),
+    so the classifier is trained on the augmented matrix and the fitted forest
+    is reachable at ``pipeline.named_steps["anomaly"].anomaly_scorer_``.
+    """
     feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
     pipeline = build_feature_pipeline(
         numerical_columns=bundle.numerical_columns,
         categorical_columns=bundle.categorical_columns,
+        anomaly=anomaly_hp,
     )
     X = pipeline.fit_transform(frame[feature_columns])
 
@@ -570,25 +576,31 @@ def _fit_supervised_component(
     return pipeline, classifier
 
 
-def _fit_anomaly_component(
+def _build_sweep_matrices(
     *,
     bundle: FeatureBundle,
-    pipeline: Pipeline,
-    frame: pd.DataFrame,
-    hyperparameters: dict[str, Any],
-) -> AnomalyScorer:
-    """Fit the Isolation Forest on the same feature space as the classifier.
+    split_train: pd.DataFrame,
+    split_val: pd.DataFrame,
+    anomaly_hp: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit preprocessing + the Isolation Forest once and return augmented X.
 
-    The anomaly head consumes the same preprocessed feature matrix as
-    the supervised head — ensures both score on the same view of the
-    data and the ensemble combination is on commensurable inputs.
+    The scaler/encoder and the stacking forest are family-independent and the
+    forest is not swept, so they are fit a single time on the train fold and
+    applied to train and val. Every family's trials then reuse the returned
+    augmented matrices, which is what keeps the IF fit out of the per-trial
+    loop. The fitted pipeline is intentionally discarded: the final model
+    refits its own pipeline on train+val.
     """
     feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
-    X = pipeline.transform(frame[feature_columns])
-
-    scorer = AnomalyScorer(**hyperparameters)
-    scorer.fit(X)
-    return scorer
+    pipeline = build_feature_pipeline(
+        numerical_columns=bundle.numerical_columns,
+        categorical_columns=bundle.categorical_columns,
+        anomaly=anomaly_hp,
+    )
+    X_train = pipeline.fit_transform(split_train[feature_columns])
+    X_val = pipeline.transform(split_val[feature_columns])
+    return X_train, X_val
 
 
 def _tune_threshold(
