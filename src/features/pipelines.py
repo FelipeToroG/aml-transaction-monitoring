@@ -29,14 +29,16 @@ training driver fits on the engineered frame, refitting per fold.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.utils.validation import check_is_fitted
 
 from src.data.loader import (
     AMOUNT_PAID_COLUMN,
@@ -49,6 +51,14 @@ from src.data.loader import (
 from src.features.entity_features import compute_entity_features
 from src.features.graph_features import compute_graph_features
 from src.features.velocity_features import compute_velocity_features
+
+# The anomaly scorer lives in the models layer, but as a stacking feature
+# it is feature-engineering machinery. Importing the existing scorer here
+# (rather than reimplementing the Isolation Forest plus calibration) keeps
+# one definition of the anomaly score; the import is acyclic because
+# src.models.anomaly depends on neither this module nor the models package
+# init beyond stdlib and sklearn.
+from src.models.anomaly import AnomalyScorer
 
 # Low-cardinality categorical columns that one-hot encoding handles
 # well. The account identifier columns are intentionally excluded:
@@ -156,10 +166,80 @@ def build_engineered_frame(frame: pd.DataFrame) -> FeatureBundle:
     )
 
 
+# Name of the single column AnomalyScoreAppender adds. It is always the
+# trailing column of the transformer output, so consumers can read it
+# positionally (X[:, -1]) when feature names are unavailable.
+ANOMALY_FEATURE_NAME: Final[str] = "anomaly_score"
+
+
+class AnomalyScoreAppender(BaseEstimator, TransformerMixin):
+    """Fit an Isolation Forest in ``fit`` and append its score in ``transform``.
+
+    The stacking primitive. Rather than blending the Isolation Forest score
+    with the supervised probability after the fact, the calibrated anomaly
+    score is appended as one extra column so the downstream classifier
+    learns how much to weight it. The step is composed after the
+    ColumnTransformer in the feature Pipeline, so the forest scores the same
+    scaled, encoded matrix the supervised head consumes.
+
+    Zero-leakage / no-refit contract
+    --------------------------------
+    The forest and its calibration percentiles are fit once, in ``fit``, on
+    the training half of whatever fold the enclosing Pipeline is fit on.
+    ``transform`` only scores; it never refits. Because the Isolation Forest
+    is unsupervised it never sees ``y``, so scoring the training rows
+    in-sample carries no label information: the appended column is a
+    label-free transform of ``X``, on the same footing as the StandardScaler
+    upstream of it. That is why no out-of-fold construction (which a
+    supervised stacking base learner would require) is needed here.
+
+    Parameters
+    ----------
+    anomaly_hyperparameters : dict[str, Any] | None
+        Keyword arguments forwarded to :class:`AnomalyScorer`. ``None`` uses
+        the scorer's defaults. Stored verbatim so the estimator satisfies
+        the scikit-learn ``get_params`` / ``clone`` contract.
+    """
+
+    def __init__(self, anomaly_hyperparameters: dict[str, Any] | None = None) -> None:
+        self.anomaly_hyperparameters = anomaly_hyperparameters
+
+    def fit(self, X: np.ndarray, y: Any = None) -> "AnomalyScoreAppender":
+        # y is accepted for the transformer signature and ignored: the
+        # Isolation Forest is unsupervised. Fitting here (not in transform)
+        # is what binds the forest to the training fold only.
+        X = np.asarray(X)
+        scorer = AnomalyScorer(**(self.anomaly_hyperparameters or {}))
+        scorer.fit(X)
+        self.anomaly_scorer_ = scorer
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        check_is_fitted(self, "anomaly_scorer_")
+        X = np.asarray(X)
+        scores = self.anomaly_scorer_.score(X).reshape(-1, 1)
+        # Append as the trailing column. hstack leaves the existing columns
+        # untouched and in order, so the supervised matrix is a strict
+        # superset of the preprocessing output.
+        return np.hstack([X, scores])
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        # Audit aid only; nothing in the scoring path depends on it. Inside a
+        # Pipeline the upstream names are threaded in, so the real
+        # ColumnTransformer names propagate; a standalone call falls back to
+        # positional x0..xN.
+        if input_features is None:
+            n = getattr(self, "n_features_in_", 0)
+            input_features = [f"x{i}" for i in range(n)]
+        return np.asarray([*input_features, ANOMALY_FEATURE_NAME], dtype=object)
+
+
 def build_feature_pipeline(
     *,
     numerical_columns: tuple[str, ...],
     categorical_columns: tuple[str, ...],
+    anomaly: dict[str, Any] | None = None,
 ) -> Pipeline:
     """Construct the sklearn preprocessing pipeline.
 
@@ -184,12 +264,20 @@ def build_feature_pipeline(
     categorical_columns : tuple[str, ...]
         Names of categorical columns. Typically obtained from a
         ``FeatureBundle``.
+    anomaly : dict[str, Any] | None
+        When provided, the Isolation Forest hyperparameters forwarded to
+        :class:`AnomalyScorer`; an :class:`AnomalyScoreAppender` step is
+        composed after the ColumnTransformer so the calibrated anomaly
+        score becomes a trailing feature column (stacking). When ``None``
+        (the default) the pipeline is preprocessing-only and identical to
+        prior behaviour, so preprocessing-only callers are unaffected.
 
     Returns
     -------
     sklearn.pipeline.Pipeline
         The composed preprocessing pipeline ready to be combined with
-        a classifier in the training driver.
+        a classifier in the training driver. With ``anomaly`` set it also
+        appends the anomaly-score feature.
     """
     numerical_pipeline = Pipeline(
         steps=[
@@ -249,7 +337,17 @@ def build_feature_pipeline(
         verbose_feature_names_out=False,
     )
 
-    return Pipeline(steps=[("features", column_transformer)])
+    steps: list[tuple[str, Any]] = [("features", column_transformer)]
+    if anomaly is not None:
+        # Stacking: the calibrated Isolation Forest score is appended as one
+        # feature so the supervised head learns its weight, rather than a
+        # fixed post-hoc convex blend. Placed after the ColumnTransformer so
+        # the forest scores the scaled, encoded matrix.
+        steps.append(
+            ("anomaly", AnomalyScoreAppender(anomaly_hyperparameters=anomaly))
+        )
+
+    return Pipeline(steps=steps)
 
 
 def _compute_temporal_features(frame: pd.DataFrame) -> pd.DataFrame:
