@@ -166,9 +166,29 @@ families:
     # Baseline included so the README can quantify the lift of ensemble
     # methods over a linear model and demonstrate that the ensemble's
     # complexity is justified rather than assumed.
+    #
+    # Search space deliberately constrained after the v0 incident
+    # (docs/INCIDENT_REPORT.md). The original space allowed the
+    # pathological triple solver=saga + penalty=l1 + C near 0.001, which
+    # hung the sweep indefinitely on the 3.55M-row training fold: strong
+    # L1 regularization needs many gradient steps to reach tolerance, the
+    # L1 penalty is non-differentiable and slow for any solver, and SAGA
+    # at that scale converges so slowly that a single CV trial ran past
+    # six hours with no completion. Two structural changes remove the
+    # pathology rather than merely making it less likely:
+    #   1. solver restricted to liblinear only. liblinear uses a
+    #      coordinate-descent / trust-region path that handles both L1 and
+    #      L2 efficiently at this row count and has no SAGA-style
+    #      non-convergence regime. The tradeoff is that liblinear is
+    #      single-threaded and does not support multinomial loss, neither
+    #      of which matters for this binary baseline.
+    #   2. C floor raised from 0.001 to 0.01. The hang lived in the
+    #      very-low-C (very-strong-regularization) corner; lifting the
+    #      floor one order of magnitude keeps a genuinely regularized
+    #      region in the search while excluding the degenerate one.
     C:
       type: float
-      low: 0.001
+      low: 0.01
       high: 100.0
       log: true
     penalty:
@@ -179,4 +199,4 @@ families:
       choices: [balanced]
     solver:
       type: categorical
-      choices: [liblinear, saga]
+      choices: [liblinear]

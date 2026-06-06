@@ -140,11 +140,19 @@ def build_classifier(
         )
 
     elif family == "logistic_regression":
-        # max_iter=1000 is required because the default 100 frequently
-        # fails to converge on the AML feature matrix, especially with
-        # the L1 penalty option included in the search space.
+        # An explicit max_iter is the convergence backstop. The search
+        # space (configs/model_config.yaml) already removes the
+        # solver=saga + penalty=l1 + low-C combination that hung the v0
+        # sweep, so liblinear should converge well within this budget.
+        # Bounding the iteration count guarantees that any residual hard
+        # trial terminates with a ConvergenceWarning rather than running
+        # unbounded: the default 100 is too low for the AML feature matrix
+        # under L1, and an unbounded solver is what caused the v0 incident
+        # (docs/INCIDENT_REPORT.md). 2000 is generous enough that a
+        # warning here signals a genuinely difficult point worth ignoring
+        # in selection, not a routine near-miss.
         classifier = LogisticRegression(
-            max_iter=1000,
+            max_iter=2000,
             random_state=random_state,
             **hyperparameters,
         )
