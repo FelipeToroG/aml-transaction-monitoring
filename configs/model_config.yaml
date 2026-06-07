@@ -145,66 +145,8 @@ families:
       type: categorical
       choices: [true, false]
 
-  random_forest:
-    n_estimators:
-      type: int
-      low: 100
-      high: 800
-      step: 50
-    max_depth:
-      type: int
-      low: 5
-      high: 30
-    min_samples_split:
-      type: int
-      low: 2
-      high: 20
-    min_samples_leaf:
-      type: int
-      low: 1
-      high: 20
-    max_features:
-      type: categorical
-      choices: [sqrt, log2, 0.5, 0.7]
-    class_weight:
-      type: categorical
-      choices: [balanced, balanced_subsample]
-
-  logistic_regression:
-    # Baseline included so the README can quantify the lift of ensemble
-    # methods over a linear model and demonstrate that the ensemble's
-    # complexity is justified rather than assumed.
-    #
-    # Search space deliberately constrained after the v0 incident
-    # (docs/INCIDENT_REPORT.md). The original space allowed the
-    # pathological triple solver=saga + penalty=l1 + C near 0.001, which
-    # hung the sweep indefinitely on the 3.55M-row training fold: strong
-    # L1 regularization needs many gradient steps to reach tolerance, the
-    # L1 penalty is non-differentiable and slow for any solver, and SAGA
-    # at that scale converges so slowly that a single CV trial ran past
-    # six hours with no completion. Two structural changes remove the
-    # pathology rather than merely making it less likely:
-    #   1. solver restricted to liblinear only. liblinear uses a
-    #      coordinate-descent / trust-region path that handles both L1 and
-    #      L2 efficiently at this row count and has no SAGA-style
-    #      non-convergence regime. The tradeoff is that liblinear is
-    #      single-threaded and does not support multinomial loss, neither
-    #      of which matters for this binary baseline.
-    #   2. C floor raised from 0.001 to 0.01. The hang lived in the
-    #      very-low-C (very-strong-regularization) corner; lifting the
-    #      floor one order of magnitude keeps a genuinely regularized
-    #      region in the search while excluding the degenerate one.
-    C:
-      type: float
-      low: 0.01
-      high: 100.0
-      log: true
-    penalty:
-      type: categorical
-      choices: [l1, l2]
-    class_weight:
-      type: categorical
-      choices: [balanced]
-    solver:
-      type: categorical
-      choices: [liblinear]
+  # random_forest and logistic_regression were dropped from the sweep as
+  # cost-prohibitive at full scale: the RF sweep ran ~12h on the 5M-row fold,
+  # and LogReg's single-threaded liblinear trials are glacial at that row count.
+  # Both are baselines; XGBoost and LightGBM are the real contenders, so the
+  # trial budget is spent where it changes the operating point.
