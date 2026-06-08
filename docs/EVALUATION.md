@@ -20,7 +20,7 @@ Costs sourced from `configs/cost_matrix.yaml`. Default values:
 
 | Parameter | Value | Source |
 |---|---|---|
-| `false_negative_cost_usd` | $11,500 | Avg illicit dollars per missed alert ($8,500, FinCEN SAR aggregates) + expected regulatory penalty ($25,000 × 12% detection probability) |
+| `false_negative_cost_usd` | $16,000 | Avg illicit dollars per missed alert ($8,500, FinCEN SAR aggregates) + expected regulatory penalty ($25,000 × 30% detection probability = $7,500) |
 | `false_positive_cost_usd` | $22.17 | $95/hour fully loaded investigator rate × 14 min review = $22.17 |
 | `k_per_day` | 384 | 8 analysts × 48 alerts/analyst/day |
 | `investigator_hourly_rate_usd` | $95 | Tier-2 compliance analyst, US-based fintech |

@@ -38,7 +38,7 @@ AML is structurally harder than fraud detection along several dimensions:
 
 **False positives are not free.** A false-positive alert consumes ~14 minutes of a $95/hour compliance analyst's time, plus the opportunity cost of an analyst who could have been reviewing a real case. Published AML alert false-positive rates exceed 95% at most institutions, meaning the vast majority of investigator labour is spent clearing benign activity. A model that reduces the false-positive rate by even 10 percentage points at constant recall is worth millions of dollars in saved operations cost per year at a mid-tier payments platform.
 
-**False negatives are very expensive.** A missed laundering case has two components of cost: the illicit dollars that flow through ($8,500 average per missed case based on FinCEN SAR aggregate statistics) and the probability-weighted regulatory penalty if the case surfaces in a regulator examination (calibrated to $25,000 × 12% detection probability = $3,000 expected). The combined false-negative cost is approximately $11,500 per missed case, or roughly 500× the per-alert false-positive cost.
+**False negatives are very expensive.** A missed laundering case has two components of cost: the illicit dollars that flow through ($8,500 average per missed case based on FinCEN SAR aggregate statistics) and the probability-weighted regulatory penalty if the case surfaces in a regulator examination (calibrated to $25,000 × 30% detection probability = $7,500 expected). The combined false-negative cost is approximately $16,000 per missed case, or roughly 720× the per-alert false-positive cost.
 
 **Operational constraints are real.** Compliance teams have fixed analyst headcount. A model that produces 10,000 alerts per day against a team that can review 400 is not deployable, regardless of how well it ranks the alerts. The model must be tuned to produce roughly the volume the team can absorb.
 
@@ -326,8 +326,8 @@ The cost matrix is defined in `configs/cost_matrix.yaml` and reproduced here:
 | Parameter | Value | Source |
 |---|---|---|
 | Average illicit dollars per missed alert | $8,500 | FinCEN-published SAR aggregate statistics |
-| Expected regulatory penalty per missed case | $25,000 × 12% probability = $3,000 | OCC / FinCEN published enforcement averages |
-| **False-negative cost (total)** | **$11,500** | Sum of the above |
+| Expected regulatory penalty per missed case | $25,000 × 30% probability = $7,500 | OCC / FinCEN published enforcement averages |
+| **False-negative cost (total)** | **$16,000** | Sum of the above |
 | Investigator hourly rate | $95 | Fully loaded cost of a Tier-2 compliance analyst |
 | Average minutes per alert review | 14 | Industry benchmark |
 | **False-positive cost** | **$22.17** | $95 × (14 / 60) |
@@ -335,7 +335,7 @@ The cost matrix is defined in `configs/cost_matrix.yaml` and reproduced here:
 | Analyst count | 8 | Default deployment |
 | **k_per_day** | **384** | analyst_count × daily_capacity_per_analyst |
 
-The ratio FN cost / FP cost is ~520:1. This asymmetry is what makes cost-weighted optimisation interesting; it is also what AUC-PR ignores.
+The ratio FN cost / FP cost is ~722:1. This asymmetry is what makes cost-weighted optimisation interesting; it is also what AUC-PR ignores.
 
 ### 5.4 Why not AUC-PR even as a coarse signal
 
@@ -615,7 +615,7 @@ A: 3-fold isotonic CV triples training cost per trial. Doing it inside the sweep
 A: AUC-PR integrates over every threshold. In production the model operates at one threshold — the one calibrated to investigator review capacity. A model that ranks well on average but badly at the operating threshold scores high on AUC-PR but performs poorly in production. Cost-weighted Precision@k evaluates the exact operating point the model will be deployed at, with the actual dollar cost of false positives and false negatives.
 
 **Q: Walk me through the cost matrix derivation.**
-A: False-negative cost = average illicit dollars per missed alert ($8,500, from FinCEN SAR aggregate statistics) + expected regulatory penalty ($25,000 × 12% detection probability = $3,000). Total: $11,500 per missed case. False-positive cost = investigator hourly rate ($95) × average review time (14 minutes / 60) = $22.17 per cleared alert. The ratio FN:FP is ~520:1. That asymmetry is what makes cost-weighted optimisation interesting.
+A: False-negative cost = average illicit dollars per missed alert ($8,500, from FinCEN SAR aggregate statistics) + expected regulatory penalty ($25,000 × 30% detection probability = $7,500). Total: $16,000 per missed case. False-positive cost = investigator hourly rate ($95) × average review time (14 minutes / 60) = $22.17 per cleared alert. The ratio FN:FP is ~722:1. That asymmetry is what makes cost-weighted optimisation interesting.
 
 **Q: Where does the threshold come from?**
 A: After family selection, we sweep 200 candidate thresholds between the 1st and 99th percentile of the validation-set score distribution. We select whichever threshold minimises total cost (or equivalently maximises the negated objective). The percentile range concentrates the search where decisions actually flip — sweeping `[0, 1]` uniformly wastes 99% of the budget where the threshold will never sit.
