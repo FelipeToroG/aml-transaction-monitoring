@@ -1,5 +1,7 @@
 # AML Transaction Monitoring & Alert Triage System
 
+![AML Transaction Monitoring Platform with LLM Narratives](docs/images/aml_platform.svg)
+
 End-to-end production AML monitoring service for payment platforms. Hybrid anomaly detection plus supervised classification on a 5M-transaction labeled corpus, cost-sensitive threshold optimization, Claude-powered case narrative generation, an investigator-feedback loop, and live drift and fairness monitoring — packaged as a containerized FastAPI service with a Streamlit investigator review UI.
 
 **Author:** Felipe Toro

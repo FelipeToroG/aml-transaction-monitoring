@@ -1,0 +1,61 @@
+<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" font-family="DejaVu Sans, Verdana, Arial, sans-serif">
+  <rect x="0" y="0" width="1280" height="640" fill="#FFFFFF"/>
+  <rect x="0" y="0" width="1280" height="6" fill="#D97757"/>
+  <text x="60" y="58" font-size="32" font-weight="700" fill="#0F172A">AML Transaction Monitoring Platform with LLM Narratives</text>
+  <text x="60" y="89" font-size="18" fill="#475569">Cost-aware ML detection + LLM-powered case adjudication, audit-defensible by construction</text>
+  <text x="60" y="146" font-size="16" font-weight="700" letter-spacing="2" fill="#2563EB">DETECTION</text>
+  <rect x="60" y="158" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="187.5" y="192" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Transactions</text>
+  <text x="187.5" y="216" text-anchor="middle" font-size="13.5" fill="#64748B">~5M, IBM AML HI-Small</text>
+  <rect x="361" y="158" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="488.5" y="192" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Feature pipeline</text>
+  <text x="488.5" y="216" text-anchor="middle" font-size="13.5" fill="#64748B">78 features + IF stacking</text>
+  <rect x="662" y="158" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="789.5" y="192" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Calibrated LightGBM</text>
+  <text x="789.5" y="216" text-anchor="middle" font-size="13.5" fill="#64748B">Optuna sweep winner</text>
+  <rect x="963" y="158" width="255" height="80" rx="10" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="1090.5" y="192" text-anchor="middle" font-size="19" font-weight="700" fill="#1E3A8A">Precision@k</text>
+  <text x="1090.5" y="216" text-anchor="middle" font-size="13.5" fill="#3B5BA5">cost-weighted, k=384</text>
+  <line x1="318" y1="198" x2="357" y2="198" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M357,198 L349,194 L349,202 Z" fill="#94A3B8"/>
+  <line x1="619" y1="198" x2="658" y2="198" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M658,198 L650,194 L650,202 Z" fill="#94A3B8"/>
+  <line x1="920" y1="198" x2="959" y2="198" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M959,198 L951,194 L951,202 Z" fill="#94A3B8"/>
+  <text x="60" y="300" font-size="16" font-weight="700" letter-spacing="2" fill="#D97757">LLM ADJUDICATION</text>
+  <rect x="60" y="313" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="187.5" y="347" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Top 384 alerts</text>
+  <text x="187.5" y="371" text-anchor="middle" font-size="13.5" fill="#64748B">daily review capacity</text>
+  <rect x="361" y="313" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="488.5" y="347" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Evidence bundle</text>
+  <text x="488.5" y="371" text-anchor="middle" font-size="13.5" fill="#64748B">txn IDs + feature values</text>
+  <rect x="662" y="313" width="255" height="80" rx="10" fill="#D97757" stroke="#B85C3E"/>
+  <text x="789.5" y="343" text-anchor="middle" font-size="20" font-weight="700" fill="#FFFFFF">LLM case narrative</text>
+  <text x="789.5" y="367" text-anchor="middle" font-size="13" fill="#FCE9E0">Claude, citation-grounded</text>
+  <rect x="963" y="313" width="255" height="80" rx="10" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="1090.5" y="347" text-anchor="middle" font-size="20" font-weight="700" fill="#1E293B">Investigator review</text>
+  <text x="1090.5" y="371" text-anchor="middle" font-size="13.5" fill="#64748B">FastAPI + Streamlit UI</text>
+  <line x1="318" y1="353" x2="357" y2="353" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M357,353 L349,349 L349,357 Z" fill="#94A3B8"/>
+  <line x1="619" y1="353" x2="658" y2="353" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M658,353 L650,349 L650,357 Z" fill="#94A3B8"/>
+  <line x1="920" y1="353" x2="959" y2="353" stroke="#94A3B8" stroke-width="2"/>
+  <path d="M959,353 L951,349 L951,357 Z" fill="#94A3B8"/>
+  <rect x="60" y="432" width="1160" height="112" rx="12" fill="#0F172A"/>
+  <text x="176" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">0.91</text>
+  <text x="176" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">Precision@k, k=384</text>
+  <text x="408" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">~445x</text>
+  <text x="408" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">lift over random</text>
+  <text x="640" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">22.4%</text>
+  <text x="640" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">recall, capacity-bound</text>
+  <text x="872" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">49</text>
+  <text x="872" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">tests passing</text>
+  <text x="1104" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">&lt;150ms</text>
+  <text x="1104" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">p99 scoring target</text>
+  <line x1="292" y1="458" x2="292" y2="518" stroke="#1E293B" stroke-width="1"/>
+  <line x1="524" y1="458" x2="524" y2="518" stroke="#1E293B" stroke-width="1"/>
+  <line x1="756" y1="458" x2="756" y2="518" stroke="#1E293B" stroke-width="1"/>
+  <line x1="988" y1="458" x2="988" y2="518" stroke="#1E293B" stroke-width="1"/>
+  <text x="60" y="600" font-size="14.5" fill="#94A3B8">Felipe Toro</text>
+  <text x="1220" y="600" text-anchor="end" font-size="14.5" fill="#64748B">github.com/FelipeToroG/aml-transaction-monitoring</text>
+</svg>
