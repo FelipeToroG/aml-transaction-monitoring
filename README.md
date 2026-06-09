@@ -1,8 +1,8 @@
-# AML Transaction Monitoring & Alert Triage System
+# AML Transaction Monitoring & Alert Triage System with LLM Narratives
 
 ![AML Transaction Monitoring Platform with LLM Narratives](docs/images/aml_platform.svg)
 
-End-to-end production AML monitoring service for payment platforms. Hybrid anomaly detection plus supervised classification on a 5M-transaction labeled corpus, cost-sensitive threshold optimization, Claude-powered case narrative generation, an investigator-feedback loop, and live drift and fairness monitoring — packaged as a containerized FastAPI service with a Streamlit investigator review UI.
+End-to-end production AML monitoring service for payment platforms. Hybrid anomaly detection plus supervised classification on a 5M-transaction labeled corpus, cost-sensitive threshold optimization, Claude-powered case narrative generation, an investigator-feedback loop, and live drift and fairness monitoring, packaged as a containerized FastAPI service with a Streamlit investigator review UI.
 
 **Author:** Felipe Toro
 **License:** MIT
@@ -12,7 +12,7 @@ End-to-end production AML monitoring service for payment platforms. Hybrid anoma
 
 ## TL;DR
 
-A real-time AML transaction monitoring service designed for payments and money-transmitter platforms (Stripe Radar / Wise / Mercury-class teams). Every alert carries a structured, evidence-bound case narrative ready for compliance officer review — no hallucinated facts, every claim traces to a specific transaction or feature value.
+A real-time AML transaction monitoring service designed for payments and money-transmitter platforms (Stripe Radar / Wise / Mercury-class teams). Every alert carries a structured, evidence-bound case narrative ready for compliance officer review: no hallucinated facts, every claim traces to a specific transaction or feature value.
 
 | What | Value |
 |------|-------|
@@ -33,17 +33,17 @@ A real-time AML transaction monitoring service designed for payments and money-t
 
 ## Why this project
 
-Banks and fintech compliance teams spend billions annually on AML monitoring and still drown in false positives. Industry-reported AML alert false-positive rates exceed ninety-five percent at most institutions, meaning investigators spend the overwhelming majority of their day clearing benign activity. Reducing that rate — without sacrificing true-positive recall — is the single highest-leverage problem in AML operations.
+Banks and fintech compliance teams spend billions annually on AML monitoring and still drown in false positives. Industry-reported AML alert false-positive rates exceed ninety-five percent at most institutions, meaning investigators spend the overwhelming majority of their day clearing benign activity. Reducing that rate, without sacrificing true-positive recall, is the single highest-leverage problem in AML operations.
 
 This system is built around what production AML monitoring actually requires, not what a notebook demonstrates:
 
 1. **Audit-defensible methodology.** Every alert produces a structured audit trail: feature values, model version, threshold, and the evidence supporting each narrative claim. Compliance officers and regulators can reconstruct any decision.
-2. **Cost-aware objective.** Models are selected on investigator-hour-cost-weighted Precision@k, not AUC-PR. The right model is the one that minimizes total cost — investigator time spent on false positives plus illicit dollars missed — not the one that scores highest on the academically conventional metric.
+2. **Cost-aware objective.** Models are selected on investigator-hour-cost-weighted Precision@k, not AUC-PR. The right model is the one that minimizes total cost (investigator time spent on false positives plus illicit dollars missed), not the one that scores highest on the academically conventional metric.
 3. **Evidence-bound case narratives.** The LLM never invents transactions or features. Every claim in a case narrative cites either a transaction ID or a feature value from the evidence bundle. Refusal-on-low-confidence is built into the prompting layer; hallucination is mathematically constrained, not just discouraged.
 4. **Investigator feedback loop.** Every disposition (cleared / escalated / SAR-filed) flows back into the system. Suppression-rate and false-positive-rate metrics update in real time. The model improves with use rather than rotting in production.
 5. **Fairness and drift as first-class concerns.** Bias audits run on every model release. Population Stability Index monitors feature and prediction drift. Alerts fire when either crosses regulator-relevant tolerance.
 
-I'm a former defense aerospace finance professional transitioning into AI/ML engineering. The domain insight I bring is real: I have defended $300M+ in proposals against federal auditors and built quantitative cost models for high-stakes regulatory environments. Audit-defensibility is not a feature I added — it is the way I think.
+I'm a former defense aerospace finance professional transitioning into AI/ML engineering. The domain insight I bring is real: I have defended $300M+ in proposals against federal auditors and built quantitative cost models for high-stakes regulatory environments. Audit-defensibility is not a feature I added; it is the way I think.
 
 ---
 
@@ -157,7 +157,7 @@ aml-transaction-monitoring/
 - Python 3.11+
 - Docker and docker-compose (optional, for the containerized stack)
 - An Anthropic API key (the case narrative layer calls Claude)
-- The IBM AML HI-Small dataset — see "Reproduce" below
+- The IBM AML HI-Small dataset (see "Reproduce" below)
 
 ### Install
 
@@ -188,7 +188,7 @@ bash scripts/download_data.sh
 # 2. Walk through EDA.
 jupyter notebook notebooks/01_eda.ipynb
 
-# 3. Run the training pipeline (Optuna sweep, ~30–45 min on M-series Mac).
+# 3. Run the training pipeline (Optuna sweep + stacking refit; ~2-3 hours end-to-end on a CUDA workstation, dominated by the train+val refit; the feature cache makes re-runs much faster).
 bash scripts/train.sh
 ```
 
@@ -236,7 +236,7 @@ Prometheus metrics endpoint. Exposes inference latency histograms, alert volume 
 
 ### `POST /score`
 
-Score a single transaction. Returns the hybrid risk score (anomaly plus supervised), tier classification, model version, and the feature attribution that drove the score.
+Score a single transaction. Returns the calibrated risk score (the supervised probability over the feature matrix, which already includes the stacked Isolation Forest anomaly score as a column), tier classification, model version, and the feature attribution that drove the score.
 
 ### `POST /triage`
 
@@ -266,7 +266,7 @@ A handful of choices in this repo are deliberate enough that they would survive 
 
 **Schema lives in one file.** `src/data/loader.py` is the single source of truth for column names, dtypes, and the target column. The API's Pydantic request schema, the feature pipeline's `ColumnTransformer`, the database models, and every test in the suite import from the same constants. A rename in `loader.py` either propagates cleanly or fails loudly at import time.
 
-**Zero-leakage by construction.** All preprocessing — scaling, encoding, target-aware aggregations — lives inside the sklearn Pipeline. The pipeline is fit only on the temporal training split. Validation and test folds never see the fitted transformers before prediction time. Leakage is impossible by construction, not by discipline.
+**Zero-leakage by construction.** All preprocessing (scaling, encoding, target-aware aggregations) lives inside the sklearn Pipeline. The pipeline is fit only on the temporal training split. Validation and test folds never see the fitted transformers before prediction time. Leakage is impossible by construction, not by discipline.
 
 **Asymmetric audit logging.** Every alert is logged with full feature provenance. Cleared alerts retain narrative and features for retraining; escalated alerts additionally log the investigator's free-text justification (when provided) for SAR-narrative training data. The audit log is append-only and indexed for regulator query.
 
@@ -328,8 +328,8 @@ A concrete walk-through: of 761,752 test transactions, 1,561 are laundering. The
 | Layer | Tools |
 |-------|-------|
 | Data engineering | pandas, NumPy, PyArrow, NetworkX |
-| Modeling — supervised | scikit-learn, XGBoost, LightGBM |
-| Modeling — anomaly | PyOD (Isolation Forest), scikit-learn |
+| Modeling - supervised | scikit-learn, XGBoost, LightGBM |
+| Modeling - anomaly | PyOD (Isolation Forest), scikit-learn |
 | Hyperparameter search | Optuna (TPE sampler, fixed seed) |
 | Experiment tracking | MLflow (filesystem backend, project-local URI) |
 | Calibration & explainability | scikit-learn isotonic / Platt, SHAP |
