@@ -12,7 +12,7 @@ The engine is constructed from the ``DATABASE_URL`` environment
 variable with a SQLite fallback. The same model definitions and
 repository code work against SQLite (local development, tests,
 investigator-laptop deployments) and PostgreSQL (production fintech
-deployments) — the URL is the only thing that changes.
+deployments) - the URL is the only thing that changes.
 
 Schema migration
 ----------------
@@ -137,7 +137,7 @@ def init_db() -> None:
     # create_all runs. The import is local rather than top-level to
     # break what would otherwise be a circular import between
     # db.py → models.py → db.py (models import Base from here).
-    from src.persistence import models  # noqa: F401 — import for side effect
+    from src.persistence import models  # noqa: F401 - import for side effect
 
     Base.metadata.create_all(bind=get_engine())
 

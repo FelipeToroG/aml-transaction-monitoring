@@ -18,7 +18,7 @@ absorbs those differences and presents a uniform interface to the
 training driver.
 
 The factory also handles probability calibration. Tree ensembles produce
-poorly calibrated probabilities by default — the predicted probabilities
+poorly calibrated probabilities by default - the predicted probabilities
 do not match empirical positive rates. For cost-sensitive AML scoring
 this matters: the ensemble layer combines anomaly scores and supervised
 probabilities at the score level, and poorly calibrated probabilities
@@ -162,7 +162,7 @@ def build_classifier(
         Family-specific hyperparameters as sampled by Optuna. Keys must
         match the names in ``configs/model_config.yaml``. Unknown keys
         for a given family are passed through to the underlying
-        constructor, which raises ``TypeError`` — this is intentional
+        constructor, which raises ``TypeError`` - this is intentional
         because a silently ignored hyperparameter would invalidate the
         Optuna sweep without surfacing an error.
     random_state : int
@@ -186,8 +186,8 @@ def build_classifier(
         If ``family`` is not a recognised family name.
     """
     if family == "xgboost":
-        # Imported lazily so the API container — which does not need
-        # XGBoost's heavy C++ initialisation — can omit the dependency
+        # Imported lazily so the API container - which does not need
+        # XGBoost's heavy C++ initialisation - can omit the dependency
         # if it ever drops the gradient-boosted families. The current
         # API does include xgboost in requirements-api.txt because the
         # production ensemble loads it.

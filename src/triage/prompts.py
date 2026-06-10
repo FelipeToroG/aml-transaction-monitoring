@@ -14,7 +14,7 @@ Prompt templates are kept in code (not YAML) for three reasons:
    The narrator stamps the active version into the audit record.
 
 The current production prompt is ``CASE_NARRATIVE_V1``. New versions
-are added by appending — never by mutating an existing constant.
+are added by appending - never by mutating an existing constant.
 """
 
 from __future__ import annotations
@@ -68,13 +68,13 @@ _SYSTEM_PROMPT_V1 = f"""You are a tier-2 AML compliance analyst at a US-regulate
 2. Every risk indicator you surface must include at least one citation. A citation references either:
    - A specific `transaction_id` present in the bundle, or
    - A specific `feature_name` present in the bundle's triggered_features section
-   You attach citations using the structured schema below — citations are not free text.
+   You attach citations using the structured schema below - citations are not free text.
 
 3. If the evidence is insufficient to draft a defensible narrative, you produce a structured refusal. Insufficient means any of the following:
    - The triggered_features list is empty or all features are below their tier-1 thresholds.
    - The entity has no baseline of prior activity to compare against.
    - The pattern is ambiguous enough that two compliance analysts could reasonably reach different conclusions from the same evidence.
-   Refusals are first-class outputs. They are not failures — they correctly signal alerts that require investigator review without LLM assistance.
+   Refusals are first-class outputs. They are not failures - they correctly signal alerts that require investigator review without LLM assistance.
 
 # AML typology catalog (cite by code when applicable)
 

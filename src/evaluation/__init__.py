@@ -12,13 +12,13 @@ Public surface
 The training driver and the API both import from here. The module
 boundaries are deliberate:
 
-* ``metrics`` — cost-weighted Precision@k objective, the ``CostMatrix``
+* ``metrics`` - cost-weighted Precision@k objective, the ``CostMatrix``
   configuration dataclass, basic Precision@k.
-* ``investigator_simulator`` — discrete-event simulation of an
+* ``investigator_simulator`` - discrete-event simulation of an
   investigator queue with configurable analyst pool and SLA targets.
-* ``calibration`` — reliability curves, Brier score, expected
+* ``calibration`` - reliability curves, Brier score, expected
   calibration error.
-* ``reports`` — Markdown and JSON eval-report generators consumed by
+* ``reports`` - Markdown and JSON eval-report generators consumed by
   ``scripts/update_results.py`` and the audit log.
 """
 

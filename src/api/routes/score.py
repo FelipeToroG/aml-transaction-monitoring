@@ -129,7 +129,7 @@ def score_transaction(
 
     # Observe the score distribution by tier. This metric is the
     # foundation of the operator dashboard's "is the model drifting?"
-    # panel — a shift in the per-tier score distribution is the first
+    # panel - a shift in the per-tier score distribution is the first
     # visible sign of model or upstream-data drift.
     record_score(score=risk_score, tier=tier_name)
 
@@ -345,7 +345,7 @@ def _build_evidence_snapshot(
     The snapshot is what the narrator reads at triage time and what
     the audit-trace endpoint returns when a regulator queries an
     historical alert. Structure must therefore be stable across
-    deployments — schema changes require a model_schema_version bump.
+    deployments - schema changes require a model_schema_version bump.
     """
     return {
         "alert_id_placeholder": "set_on_persist",

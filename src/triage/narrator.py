@@ -12,7 +12,7 @@ alert and its assembled evidence bundle, it:
 5. If validation fails, retries with a strengthening preamble that
    names the specific validation error. After
    ``max_validation_retries`` exhausted retries, returns a
-   ``schema_failure`` refusal — never a silent dropout.
+   ``schema_failure`` refusal - never a silent dropout.
 6. Verifies that every citation in the parsed narrative refers to an
    identifier present in the evidence bundle. A narrative that cites
    features or transactions that do not exist in the bundle is itself
@@ -126,7 +126,7 @@ class Narrator:
         full-narrative JSON plus some slack.
     temperature : float
         Sampling temperature. 0.0 for deterministic, reproducible
-        outputs — a regulatory requirement for any LLM whose output
+        outputs - a regulatory requirement for any LLM whose output
         may end up in a SAR filing.
     max_validation_retries : int
         Number of times to re-prompt with a strengthening preamble
@@ -592,7 +592,7 @@ class Narrator:
                     "prompt_version": self.prompt_template.version,
                 },
             )
-        except Exception as exc:  # noqa: BLE001 — tracing is best-effort
+        except Exception as exc:  # noqa: BLE001 - tracing is best-effort
             logger.debug("Langfuse trace start failed; continuing without trace: %s", exc)
             return None
 
@@ -625,5 +625,5 @@ class Narrator:
                     "raw_response_truncated": (raw_response or "")[:1000],
                 },
             )
-        except Exception as exc:  # noqa: BLE001 — tracing is best-effort
+        except Exception as exc:  # noqa: BLE001 - tracing is best-effort
             logger.debug("Langfuse trace finish failed silently: %s", exc)

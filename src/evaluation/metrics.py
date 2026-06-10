@@ -10,7 +10,7 @@ The headline metric is :func:`cost_weighted_precision_at_k`. It captures
 what a deployed AML model is actually optimising for: the dollar value
 delivered per unit of investigator time, evaluated at the alert rate
 the team can realistically review. The function returns a positive
-number expressed in USD per investigator-hour — interpretable directly
+number expressed in USD per investigator-hour - interpretable directly
 by anyone with operational AML context, and unambiguous in the way
 AUC-PR is not.
 """
@@ -54,7 +54,7 @@ class CostMatrix:
     -------
     k_per_day : int
         ``daily_alert_capacity_per_analyst * analyst_count``. The
-        natural choice of ``k`` for Precision@k — the model is
+        natural choice of ``k`` for Precision@k - the model is
         evaluated on the top ``k`` alerts the team can actually review.
     """
 
@@ -202,7 +202,7 @@ def cost_weighted_precision_at_k(
 
     This is the headline metric the training driver optimises. The
     function returns a dict with the cost-weighted objective itself
-    plus the underlying counts so the result is auditable — anyone
+    plus the underlying counts so the result is auditable - anyone
     reviewing a training-run summary can verify the arithmetic without
     re-running the evaluation.
 

@@ -3,13 +3,13 @@
 The package is partitioned into single-responsibility modules so that
 each feature family can be reasoned about and tested in isolation:
 
-* ``entity_features`` — per-entity rolling aggregates (counts, amounts,
+* ``entity_features`` - per-entity rolling aggregates (counts, amounts,
   uniqueness measures) computed over multiple time windows.
-* ``velocity_features`` — short-window throughput and in-out ratios that
+* ``velocity_features`` - short-window throughput and in-out ratios that
   detect rapid laundering flows.
-* ``graph_features`` — NetworkX-based structural features on the
+* ``graph_features`` - NetworkX-based structural features on the
   transaction graph (degree, PageRank, edge novelty).
-* ``pipelines`` — sklearn ``Pipeline`` and ``ColumnTransformer``
+* ``pipelines`` - sklearn ``Pipeline`` and ``ColumnTransformer``
   composition that wires everything together with zero-leakage
   preprocessing.
 

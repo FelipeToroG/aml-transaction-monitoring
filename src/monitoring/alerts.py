@@ -81,7 +81,7 @@ DEMOGRAPHIC_PARITY_THRESHOLDS: Final[SeverityThresholds] = SeverityThresholds(
 
 # False-positive-rate parity gap. The threshold is tighter than the
 # demographic-parity gap because false positives directly consume
-# investigator time — a 5pp FPR gap is operationally significant in
+# investigator time - a 5pp FPR gap is operationally significant in
 # a way a 5pp alert-rate gap may not be (the latter could reflect
 # legitimate underlying risk differences).
 FPR_PARITY_THRESHOLDS: Final[SeverityThresholds] = SeverityThresholds(

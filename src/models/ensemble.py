@@ -23,7 +23,7 @@ The ensemble is serialised to ``models/ensemble.pkl`` with joblib,
 along with a metadata dictionary that captures schema version, fit
 timestamp, training-data provenance, and the component-level metadata
 from each underlying model. Audit reconstruction of any historical
-alert reads from this metadata block — there is no other place the
+alert reads from this metadata block - there is no other place the
 necessary model context lives.
 """
 
@@ -131,7 +131,7 @@ class AMLEnsemble:
         """Return ``(risk_score, anomaly_score)`` from one pipeline transform.
 
         The anomaly score is read from the trailing column the feature
-        pipeline appends — the exact value the supervised model consumed — so
+        pipeline appends - the exact value the supervised model consumed - so
         the component surfaced to investigators provably cannot drift from the
         score that drove the decision. Both arrays have shape ``(n_rows,)``.
         """
@@ -203,7 +203,7 @@ class AMLEnsemble:
     def load(cls, path: Path | str) -> "AMLEnsemble":
         """Deserialise an ensemble artifact with schema-version check.
 
-        Raises ``ValueError`` on schema mismatch — operating against an
+        Raises ``ValueError`` on schema mismatch - operating against an
         artifact from a different code revision is a class of silent
         failure that has produced regulator-relevant incidents in the
         past, so we surface it loudly.
@@ -244,7 +244,7 @@ def build_ensemble_from_components(
     Called by the training driver after the Optuna sweep selects the
     winning configuration. The function exists as a top-level
     constructor (rather than __init__) so the metadata payload can be
-    assembled in one place — keeping construction declarative and the
+    assembled in one place - keeping construction declarative and the
     AMLEnsemble dataclass focused on the runtime scoring path.
     """
     metadata = EnsembleMetadata(

@@ -2,13 +2,13 @@
 
 Three model components live here and are composed at training time:
 
-* ``anomaly`` — an Isolation Forest wrapper that produces a calibrated
+* ``anomaly`` - an Isolation Forest wrapper that produces a calibrated
   anomaly score in [0, 1]. The unsupervised component catches novel
   laundering typologies that did not appear in the training labels.
-* ``classifier`` — a gradient-boosted supervised classifier (XGBoost is
+* ``classifier`` - a gradient-boosted supervised classifier (XGBoost is
   the default winner; LightGBM and Random Forest are evaluated for
   comparison). Produces a calibrated probability in [0, 1].
-* ``ensemble`` — the production scoring object. Takes the two component
+* ``ensemble`` - the production scoring object. Takes the two component
   scores and produces a single risk score using weights tuned during
   training to the cost-weighted Precision@k objective.
 

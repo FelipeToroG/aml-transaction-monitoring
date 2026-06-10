@@ -5,13 +5,13 @@ classification models be evaluated for disparate impact across
 customer or transaction segments. The three canonical fairness
 metrics for an alert-classification model are:
 
-* **Demographic parity** — alert rate should not differ
+* **Demographic parity** - alert rate should not differ
   disproportionately across segments unless empirically justified
   by underlying risk differences.
-* **Equal opportunity (TPR parity)** — true-positive rate (the share
+* **Equal opportunity (TPR parity)** - true-positive rate (the share
   of actual laundering caught) should not differ across segments.
   Under-detection in any segment is a compliance failure.
-* **FPR parity** — false-positive rate should not differ across
+* **FPR parity** - false-positive rate should not differ across
   segments. Disparate false-positive rates concentrate investigator
   workload on specific customer cohorts in a way that has produced
   enforcement actions.
@@ -110,7 +110,7 @@ def compute_segment_metrics(
     for segment_value, group in frame.groupby(segment_column):
         if len(group) < min_segment_size:
             logger.debug(
-                "Skipping segment %r — %d rows below min_segment_size=%d",
+                "Skipping segment %r - %d rows below min_segment_size=%d",
                 segment_value,
                 len(group),
                 min_segment_size,
@@ -162,7 +162,7 @@ def compute_parity_gaps(segment_metrics: list[SegmentMetrics]) -> list[ParityGap
     Returns one :class:`ParityGap` per metric (alert rate, TPR, FPR).
     Each carries the gap magnitude, the severity classification from
     the configured thresholds, and the segment labels that produced
-    the extremes — the gap is the maximally-actionable summary.
+    the extremes - the gap is the maximally-actionable summary.
     """
     if not segment_metrics:
         return []

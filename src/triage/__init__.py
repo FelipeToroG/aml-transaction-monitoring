@@ -3,11 +3,11 @@
 Public surface for the triage layer. The FastAPI route and the test
 suite both import from here:
 
-* ``Narrator`` — the high-level facade for case-narrative generation.
-* ``EvidenceBundle`` — the structured input shape the narrator consumes.
-* ``CaseNarrative`` / ``RefusalReason`` / ``NarratorResult`` — the
+* ``Narrator`` - the high-level facade for case-narrative generation.
+* ``EvidenceBundle`` - the structured input shape the narrator consumes.
+* ``CaseNarrative`` / ``RefusalReason`` / ``NarratorResult`` - the
   Pydantic models constraining the narrator output.
-* ``CASE_NARRATIVE_V1`` / ``get_prompt`` / ``PROMPT_REGISTRY`` — the
+* ``CASE_NARRATIVE_V1`` / ``get_prompt`` / ``PROMPT_REGISTRY`` - the
   versioned prompt library.
 """
 

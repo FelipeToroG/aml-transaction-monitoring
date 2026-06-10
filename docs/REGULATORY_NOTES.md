@@ -17,13 +17,13 @@ The service is designed for an institution operating under the US Bank Secrecy A
 
 The typology catalog in `src.data.typologies` cites FATF guidance for each named pattern:
 
-- **Structuring** — 31 CFR §1010.311; FinCEN SAR Narrative Guidance §III.B
-- **Smurfing** — FATF Typologies Report 2018: Professional Money Laundering, §3.2
-- **Layering** — FATF Three Stages of Money Laundering; FinCEN SAR Narrative Guidance §III.D
-- **Integration** — FATF Three Stages of Money Laundering
-- **Rapid in-out movement (mule)** — FinCEN Advisory FIN-2020-A003
-- **Round-amount anomaly** — FATF Typologies Report 2021: Indicators of Suspicious Activity
-- **High-risk corridor** — FATF Public Statement on High-Risk Jurisdictions; OFAC SDN List
+- **Structuring** - 31 CFR §1010.311; FinCEN SAR Narrative Guidance §III.B
+- **Smurfing** - FATF Typologies Report 2018: Professional Money Laundering, §3.2
+- **Layering** - FATF Three Stages of Money Laundering; FinCEN SAR Narrative Guidance §III.D
+- **Integration** - FATF Three Stages of Money Laundering
+- **Rapid in-out movement (mule)** - FinCEN Advisory FIN-2020-A003
+- **Round-amount anomaly** - FATF Typologies Report 2021: Indicators of Suspicious Activity
+- **High-risk corridor** - FATF Public Statement on High-Risk Jurisdictions; OFAC SDN List
 
 When the narrator surfaces a typology, the regulatory reference flows through to the case narrative's `regulatory_references` field. SAR drafters can cite the reference directly.
 
@@ -41,7 +41,7 @@ The Federal Reserve's SR 11-7 supervisory guidance establishes the framework for
 
 - **Drift detection** via Population Stability Index in `src.monitoring.drift`. Severity bands map to operational responses (`monitor` / `warning` / `regulator-relevant`).
 - **Fairness audit** via segment-level demographic parity, equal opportunity, and FPR parity in `src.monitoring.fairness`.
-- **Score-distribution drift** is monitored separately from feature drift — a shift at constant input distribution indicates a model or pipeline regression and is the first thing to break under upstream changes.
+- **Score-distribution drift** is monitored separately from feature drift - a shift at constant input distribution indicates a model or pipeline regression and is the first thing to break under upstream changes.
 
 ### Outcomes analysis
 
@@ -60,9 +60,9 @@ The Federal Reserve's SR 11-7 supervisory guidance establishes the framework for
 
 The same components map to the EU and UK supervisory expectations:
 
-- **EBA Guidelines on ML models** — covered by the conceptual soundness, ongoing monitoring, and outcomes analysis above.
-- **GDPR data minimisation** — the schema in `src.data.loader` carries only the columns the model requires; PII is not persisted in the audit log.
-- **UK PRA SS1/23 (model risk management)** — the same SR 11-7 mapping applies; the documentation is structured the same way.
+- **EBA Guidelines on ML models** - covered by the conceptual soundness, ongoing monitoring, and outcomes analysis above.
+- **GDPR data minimisation** - the schema in `src.data.loader` carries only the columns the model requires; PII is not persisted in the audit log.
+- **UK PRA SS1/23 (model risk management)** - the same SR 11-7 mapping applies; the documentation is structured the same way.
 
 ## Disparate impact and fair lending principles
 

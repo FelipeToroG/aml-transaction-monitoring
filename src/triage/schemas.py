@@ -11,10 +11,10 @@ Two output types
 ----------------
 The narrator returns one of two structured outputs:
 
-* :class:`CaseNarrative` — a complete, citation-bearing narrative
+* :class:`CaseNarrative` - a complete, citation-bearing narrative
   suitable for investigator review and possible inclusion in a SAR
   filing.
-* :class:`RefusalReason` — a structured refusal indicating the evidence
+* :class:`RefusalReason` - a structured refusal indicating the evidence
   is insufficient for a defensible narrative. Refusals are first-class
   outputs, not errors: a model that refuses on weak evidence is
   preferable to a model that hallucinates a plausible story.
@@ -25,7 +25,7 @@ A free-text narrative can sound confident regardless of evidentiary
 support. By forcing the model into a typed schema where every claim
 must point at a specific transaction_id or feature_name, citation
 becomes a *parsing requirement*, not a stylistic suggestion. Outputs
-that fail to cite fail to deserialise — which is the strongest
+that fail to cite fail to deserialise - which is the strongest
 hallucination check available short of human review.
 """
 
@@ -46,7 +46,7 @@ class FeatureCitation(BaseModel):
     The narrator emits one of these whenever it attributes a risk
     indicator to a feature value (e.g., "the entity's 24-hour
     sub-threshold share was 0.78"). Validation against the evidence
-    bundle is performed in the narrator after parsing — the schema
+    bundle is performed in the narrator after parsing - the schema
     here only constrains the *shape* of the citation.
     """
 
@@ -92,7 +92,7 @@ class TransactionCitation(BaseModel):
 # Union of citation types. Pydantic v2 dispatches the discriminator on
 # the ``citation_type`` field at parse time, so a JSON payload with
 # ``citation_type: "feature"`` becomes a FeatureCitation and one with
-# ``citation_type: "transaction"`` becomes a TransactionCitation —
+# ``citation_type: "transaction"`` becomes a TransactionCitation - 
 # no manual disambiguation in the narrator.
 Citation = FeatureCitation | TransactionCitation
 
@@ -107,8 +107,8 @@ class RiskIndicator(BaseModel):
 
     Each indicator is bound to one or more citations. The
     ``model_validator`` below enforces the bind: a RiskIndicator with
-    zero citations is the worst-case hallucination signal — an
-    unsupported assertion — and is rejected.
+    zero citations is the worst-case hallucination signal - an
+    unsupported assertion - and is rejected.
     """
 
     model_config = ConfigDict(extra="forbid")

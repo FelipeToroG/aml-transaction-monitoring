@@ -18,7 +18,7 @@ global:
   # AUC-PR is used as the coarse cross-validation scoring signal during the
   # Optuna sweep because it is fast to compute and dense enough to give the
   # TPE sampler signal. Final selection across families uses cost-weighted
-  # Precision@k from src/evaluation/metrics.py — see EVALUATION.md.
+  # Precision@k from src/evaluation/metrics.py - see EVALUATION.md.
   scoring: average_precision
 
 families:

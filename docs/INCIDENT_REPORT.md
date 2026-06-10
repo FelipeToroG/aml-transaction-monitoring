@@ -1,4 +1,4 @@
-# Incident report — v0 training run
+# Incident report - v0 training run
 
 **Date:** 2026-05-30 → 2026-05-31
 **Project version:** 0.1.0
@@ -38,7 +38,7 @@ The v0 model artifact is in production-ready format and is what the API and UI l
 
 ### The hang
 
-Logistic Regression's Optuna sweep had been running for ~6 hours without a single trial appearing in MLflow. The parent Python process was at 99% CPU (PID 8490, CPU time 130+ hours across cores) — actively computing, but stuck inside a single trial.
+Logistic Regression's Optuna sweep had been running for ~6 hours without a single trial appearing in MLflow. The parent Python process was at 99% CPU (PID 8490, CPU time 130+ hours across cores) - actively computing, but stuck inside a single trial.
 
 Inspection of `configs/model_config.yaml` revealed the LogReg hyperparameter search range:
 
@@ -74,7 +74,7 @@ Tree-based methods don't have continuous regularization parameters that push tow
 
 A separate finding, surfaced after the salvage completed: the validation-fold cost-weighted Precision@k reported in `training_summary.json` (−94.84) and the test-fold value (−173,415) are not directly comparable.
 
-`src/models/train.py:_tune_threshold` evaluates the cost-weighted objective at `k = predictions-above-threshold`, which is a moving target as the threshold sweeps. The function then returns the threshold with the best objective at *its own k*. On v0's data this picked a very low threshold (0.0368) that flags ~452,812 of 761,752 validation transactions — essentially "flag everything." That has 0 false negatives (so no FN cost), a huge FP volume but spread across ~106k investigator hours, so the objective looks great: −$94/hour.
+`src/models/train.py:_tune_threshold` evaluates the cost-weighted objective at `k = predictions-above-threshold`, which is a moving target as the threshold sweeps. The function then returns the threshold with the best objective at *its own k*. On v0's data this picked a very low threshold (0.0368) that flags ~452,812 of 761,752 validation transactions - essentially "flag everything." That has 0 false negatives (so no FN cost), a huge FP volume but spread across ~106k investigator hours, so the objective looks great: −$94/hour.
 
 Test evaluation, in contrast, uses `cost_weighted_precision_at_k` with default `k = cost_matrix.k_per_day = 384`. Same scores, much smaller k, completely different cost arithmetic. That's the bug.
 
@@ -82,7 +82,7 @@ Test evaluation, in contrast, uses `cost_weighted_precision_at_k` with default `
 
 After the LogReg hang was characterized, three options were considered:
 
-1. **Wait it out.** Unknown remaining time — could be hours or weeks. Process was at 99% CPU but no completion guarantee.
+1. **Wait it out.** Unknown remaining time - could be hours or weeks. Process was at 99% CPU but no completion guarantee.
 2. **Restart with a constrained LogReg config.** Lose 25 hours of completed sweep work. Same ~25 hours to redo XGBoost + LightGBM + RF on the MacBook.
 3. **Kill and salvage.** Skip the LogReg sweep entirely. Reuse the XGBoost winner identified by the completed XGBoost sweep. Run downstream calibration + threshold tuning + persist. Expected wall time: ~1.5 hours.
 
@@ -99,7 +99,7 @@ The salvage driver (`scripts/salvage_train.py`) imports the existing helpers fro
 The v0 model artifact (`models/ensemble.pkl`) carries:
 
 - A calibrated XGBoost classifier (isotonic, 3-fold CV) wrapping the best hyperparameters from the completed XGBoost sweep.
-- A fitted Isolation Forest anomaly head using midpoint hyperparameters from the anomaly search space (no Optuna sweep — anomaly head was never swept in either the original or salvage paths).
+- A fitted Isolation Forest anomaly head using midpoint hyperparameters from the anomaly search space (no Optuna sweep - anomaly head was never swept in either the original or salvage paths).
 - A tuned decision threshold of 0.0368 (subject to the val/test k-mismatch caveat below).
 - The same `EnsembleMetadata` block any non-salvage artifact would carry, plus a `salvage` block in `training_summary.json` documenting why the run took this path.
 
@@ -122,11 +122,11 @@ These are the substantive issues v1 will address. Each one came directly out of 
 
 ### Fix the threshold tuner
 
-`_tune_threshold` currently sweeps the threshold against `k = predictions-above-threshold`. The result is a threshold that maximizes the objective at *its own k* but is meaningless for the operational k=384/day the model actually deploys at. v1 changes the tuner to sweep thresholds at *fixed k=384* — keep the top 384 scores regardless of threshold value, evaluate at that fixed k throughout. Expected to make val and test directly comparable and to pull the chosen threshold toward a much higher value than 0.0368.
+`_tune_threshold` currently sweeps the threshold against `k = predictions-above-threshold`. The result is a threshold that maximizes the objective at *its own k* but is meaningless for the operational k=384/day the model actually deploys at. v1 changes the tuner to sweep thresholds at *fixed k=384* - keep the top 384 scores regardless of threshold value, evaluate at that fixed k throughout. Expected to make val and test directly comparable and to pull the chosen threshold toward a much higher value than 0.0368.
 
 ### Replace weighted ensemble with stacking
 
-The current ensemble combination is `0.35 * anomaly + 0.65 * supervised`, with weights hardcoded in `configs/api_config.yaml`. Empirically the Isolation Forest score range turned out narrow (0.32–0.42), so the anomaly contribution is roughly a constant offset rather than a useful per-transaction signal. v1 feeds the Isolation Forest score as a feature column into XGBoost, letting the supervised model learn the empirical weighting non-linearly. This is the standard recommendation when one component dominates the other.
+The current ensemble combination is `0.35 * anomaly + 0.65 * supervised`, with weights hardcoded in `configs/api_config.yaml`. Empirically the Isolation Forest score range turned out narrow (0.32-0.42), so the anomaly contribution is roughly a constant offset rather than a useful per-transaction signal. v1 feeds the Isolation Forest score as a feature column into XGBoost, letting the supervised model learn the empirical weighting non-linearly. This is the standard recommendation when one component dominates the other.
 
 ### Recalibrate the cost matrix
 
@@ -138,7 +138,7 @@ The 42-minute feature-engineering step destroyed iteration speed. v1 writes `dat
 
 ### Fix or remove LogReg
 
-Either constrain the SAGA + L1 + small-C parameter region (set explicit `max_iter`, restrict `C >= 0.01`, drop SAGA from the solver list when L1 is selected), or drop LogReg from the family list entirely with a one-paragraph justification. The latter is leaner — LogReg never wins on imbalanced tabular data anyway.
+Either constrain the SAGA + L1 + small-C parameter region (set explicit `max_iter`, restrict `C >= 0.01`, drop SAGA from the solver list when L1 is selected), or drop LogReg from the family list entirely with a one-paragraph justification. The latter is leaner - LogReg never wins on imbalanced tabular data anyway.
 
 ### GPU XGBoost
 
@@ -158,7 +158,7 @@ A few takeaways worth carrying forward to subsequent projects:
 
 **Audit the metric implementation under the operating conditions you'll evaluate at.** The `_tune_threshold` bug existed at code-review time but only surfaced when val and test were compared post-hoc. v1 adds a unit test that asserts `_tune_threshold`'s threshold choice produces exactly `k=384` predictions on a synthetic input.
 
-**MLflow's run store is the source of truth, not the terminal log.** The terminal showed only family-level milestones; MLflow showed every per-trial completion. Diagnosis of the LogReg hang was only possible by reading the MLflow run directory directly (the UI was running, but the underlying file layout — `mlruns/<exp_id>/<run_id>/params/` etc. — was the authoritative signal). Operators should treat MLflow's file layout, not its UI, as the system of record.
+**MLflow's run store is the source of truth, not the terminal log.** The terminal showed only family-level milestones; MLflow showed every per-trial completion. Diagnosis of the LogReg hang was only possible by reading the MLflow run directory directly (the UI was running, but the underlying file layout - `mlruns/<exp_id>/<run_id>/params/` etc. - was the authoritative signal). Operators should treat MLflow's file layout, not its UI, as the system of record.
 
 **Salvage is a first-class engineering pattern.** Production ML systems should be able to recover from partial completion without requiring full re-runs. `scripts/salvage_train.py` is now a permanent fixture of this repo and will be ported (with the bug fixes above) into v1.
 

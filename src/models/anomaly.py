@@ -15,7 +15,7 @@ for production use:
 2. **Reproducibility metadata**: the fit captures the calibration
    percentiles, which are required for inference. The fitted object
    carries everything needed to reproduce a score given the same input
-   — required for audit traceability of any alert the model produced.
+ - required for audit traceability of any alert the model produced.
 """
 
 from __future__ import annotations

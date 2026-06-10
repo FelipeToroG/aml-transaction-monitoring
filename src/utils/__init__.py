@@ -8,6 +8,6 @@ and JSON serialisation of domain dataclasses.
 Modules here are deliberately small and dependency-light. They should
 import from the standard library and well-established third-party
 packages (Pydantic, structlog) but never from `src.api`, `src.models`,
-`src.triage`, or other domain layers — keeping the dependency arrow
+`src.triage`, or other domain layers - keeping the dependency arrow
 pointing inward avoids cyclic imports as the codebase grows.
 """

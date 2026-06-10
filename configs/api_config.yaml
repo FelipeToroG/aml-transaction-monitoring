@@ -40,7 +40,7 @@ triage:
   temperature: 0.0
   # Refuse to generate a case narrative when the evidence confidence falls
   # below this threshold. Refusal is logged but not surfaced as an error to
-  # the caller — it indicates the alert requires manual triage without LLM
+  # the caller - it indicates the alert requires manual triage without LLM
   # assistance and the operator dashboard tracks the refusal rate.
   min_evidence_confidence: 0.6
   # Maximum attempts to obtain a schema-valid narrative before surfacing a

@@ -94,7 +94,7 @@ def compute_entity_features(
     entity_role : {'source', 'destination'}
         Whether to compute features for the source or destination entity
         of each transaction. The function is called twice in production
-        — once for each role — and the two output frames are joined to
+ - once for each role - and the two output frames are joined to
         produce the full feature set.
     time_windows : tuple[str, ...]
         Pandas-style window offset strings (e.g., ``"1h"``, ``"24h"``,
@@ -259,7 +259,7 @@ def _compute_window_aggregates(
     aggregated = aggregated.drop(columns=[entity_column, TIMESTAMP_COLUMN])
 
     # First-transactions-by-entity have NaN counts (no prior history).
-    # Fill the counts with zero — there genuinely was no activity. Mean,
+    # Fill the counts with zero - there genuinely was no activity. Mean,
     # std, and max remain NaN because their values are undefined on an
     # empty window; the sklearn pipeline imputes them downstream.
     count_columns = [

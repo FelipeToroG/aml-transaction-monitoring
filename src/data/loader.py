@@ -1,9 +1,9 @@
 """Schema and dataset loading for the IBM AML HI-Small dataset.
 
 This module is the single source of truth for the raw schema. Every
-component that touches transaction data — feature engineering, the
+component that touches transaction data - feature engineering, the
 sklearn ColumnTransformer, the FastAPI request body, the database
-model, the test fixtures — imports constants from this file. A column
+model, the test fixtures - imports constants from this file. A column
 rename here either propagates cleanly through the codebase or fails
 loudly at import time. There is no other place schema lives.
 
@@ -28,7 +28,7 @@ from typing import Final
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# Raw schema constants — the single source of truth
+# Raw schema constants - the single source of truth
 # ---------------------------------------------------------------------------
 # The exact column names emitted by the IBM AML HI-Small CSV. Preserved
 # verbatim (including spaces) because the upstream dataset shipped these

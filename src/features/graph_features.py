@@ -10,7 +10,7 @@ per-entity rolling features. This module extracts those signals.
 Computational strategy
 ----------------------
 Building a NetworkX graph for every transaction in a 5M-row dataset is
-prohibitive — that would be O(n) graph constructions plus per-graph
+prohibitive - that would be O(n) graph constructions plus per-graph
 centrality computations. Instead, the implementation buckets
 transactions into rolling 24-hour windows and constructs a graph once
 per bucket. For each transaction we look up its source-entity and

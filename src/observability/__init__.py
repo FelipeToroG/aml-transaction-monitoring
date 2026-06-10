@@ -2,11 +2,11 @@
 
 Two production telemetry concerns:
 
-* ``tracing`` — Langfuse client construction. Every Claude call passes
+* ``tracing`` - Langfuse client construction. Every Claude call passes
   through a context-managed trace that records the prompt, the
   validated response, token usage, latency, and the alert ID. Traces
   are searchable in Langfuse for quality review and cost analysis.
-* ``metrics`` — Prometheus metric definitions and producer helpers.
+* ``metrics`` - Prometheus metric definitions and producer helpers.
   Exposes inference latency histograms, alert volume counters by tier,
   feedback distribution, LLM cost and latency, webhook delivery
   outcomes, and drift events.

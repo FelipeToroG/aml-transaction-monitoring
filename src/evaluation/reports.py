@@ -169,7 +169,7 @@ def _build_family_comparison_table(families: dict[str, Any]) -> str:
     Sorted by objective descending so the winner sits at the top.
     """
     if not families:
-        return "_No family comparison available — single-family run._"
+        return "_No family comparison available - single-family run._"
 
     sorted_families = sorted(
         families.items(),

@@ -3,18 +3,18 @@
 This module wires the per-domain feature builders (entity, velocity,
 graph) together with the sklearn preprocessing primitives into a single
 end-to-end pipeline. The composed object is what the model trains on
-and what the API serves predictions from — there is one pipeline shape
+and what the API serves predictions from - there is one pipeline shape
 for both, eliminating train/serve skew.
 
 Zero-leakage guarantee
 ----------------------
-All preprocessing — scaling, encoding, imputation — happens inside the
+All preprocessing - scaling, encoding, imputation - happens inside the
 sklearn ``Pipeline``. The pipeline is fit once per cross-validation
 fold on the training half of that fold only. Validation and test
 predictions go through the pipeline's ``transform``, not ``fit_transform``.
 This places scaling parameters, encoder vocabularies, and imputed
 values strictly downstream of the fold boundary. Leakage is not a
-matter of discipline — it is structurally impossible.
+matter of discipline - it is structurally impossible.
 
 Two-stage shape
 ---------------
@@ -90,7 +90,7 @@ class FeatureBundle:
     Frozen because a feature bundle is an immutable view of one pass
     through the feature builders. Keeping the metadata (feature column
     lists) alongside the dataframe makes the bundle self-describing in
-    downstream consumers — the training driver does not have to
+    downstream consumers - the training driver does not have to
     re-derive column lists from inspection.
 
     Attributes
@@ -294,8 +294,8 @@ def build_feature_pipeline(
         steps=[
             # Categorical missing values are filled with a constant
             # sentinel so they become a distinct category. This is
-            # informative — a missing payment_format is itself a signal
-            # — and prevents the one-hot encoder from silently dropping
+            # informative - a missing payment_format is itself a signal
+            # - and prevents the one-hot encoder from silently dropping
             # rows.
             (
                 "imputer",
@@ -355,9 +355,9 @@ def _compute_temporal_features(frame: pd.DataFrame) -> pd.DataFrame:
 
     Internal helper. The features are:
 
-    * ``hour_of_day``: 0–23. Combined with ``is_night`` this captures
+    * ``hour_of_day``: 0-23. Combined with ``is_night`` this captures
       "off-hours" anomalies.
-    * ``day_of_week``: 0 (Monday) – 6 (Sunday). Combined with
+    * ``day_of_week``: 0 (Monday) - 6 (Sunday). Combined with
       ``is_weekend`` this captures legitimate-commerce cyclicity.
     * ``is_weekend``: 1.0 on Saturday and Sunday.
     * ``is_night``: 1.0 between 22:00 and 06:00 local time of the
