@@ -26,9 +26,11 @@ hand-written samples.
   the bundle. Outputs that fail are retried, then degraded to a structured
   refusal rather than emitted.
 - **A note on identifiers.** The IBM HI-Small corpus has no native transaction
-  id, so the ids below are synthetic labels assigned for this showcase. In a
-  real deployment the batch path uses the source system's transaction-id
-  column. All cited ids resolve to records present in each alert's bundle.
+  id, so the ids below are synthetic labels assigned for this showcase:
+  `TXN-TEST-<id>` for the alert transaction under review and `TXN-HIST-<id>` for
+  the entity's prior activity. In a real deployment the batch path uses the
+  source system's transaction-id column. All cited ids resolve to records
+  present in each alert's bundle.
 
 | # | Alert | Ground truth | Risk | Tier | Output | Citations grounded |
 |---|---|---|---|---|---|---|
@@ -59,39 +61,39 @@ in the window, consistent with the dormancy the narrative flags.
 
 **Generated narrative** (`suspected_typology: integration`, `confidence: high`)
 
-> Source account 80154AAF0 exhibits elevated transaction volume and volatility
-> over the past 7 days, with a current outbound transfer of $16,896.52 to a
-> dormant destination account. The destination account has shown no activity
-> for approximately 10.7 days prior to this transfer, raising concerns about
-> potential integration or layering activity. The source entity's recent
-> activity pattern shows multiple large outbound transfers to distinct
-> counterparties within a 24-hour window.
+> The source entity exhibits elevated transaction volume and volatility over a
+> 7-day window, with the current transaction of $16,896.52 to a dormant
+> destination account occurring amid a pattern of large outbound transfers. The
+> destination account shows no recent activity prior to this inbound transfer,
+> suggesting potential integration or layering activity. The source entity's
+> 7-day transaction profile—characterized by high mean amounts, extreme
+> variance, and a maximum single transaction of $8.9M—is inconsistent with
+> typical commercial activity.
 
 Risk indicators (each citation-bound):
 
-1. **[high]** Exceptionally high 7-day cumulative volume (~$16.9M across
-   transfers), inconsistent with typical commercial activity. *cites feature
-   `src_7d_amount_sum`*
-2. **[high]** Maximum single 7-day transaction reached $8.9M, indicating
-   capacity for very large movements and high variance. *cites feature
-   `src_7d_amount_max`*
-3. **[medium]** Destination dormant ~10.7 days (918,960 s) before this transfer,
-   suggesting reactivation for a specific movement. *cites feature
-   `dst_dormancy_seconds`*
-4. **[medium]** High standard deviation ($2.39M) in 7-day amounts, suggesting
-   manual orchestration over automated flows. *cites feature
-   `src_7d_amount_std`*
-5. **[high]** Multiple large outbound transfers to at least three distinct
+1. **[high]** Exceptionally high 7-day cumulative volume ($16.9M) with extreme
+   variance (std $2.39M), indicating either high-volume legitimate commerce or
+   orchestrated fund movement across counterparties. *cites features
+   `src_7d_amount_sum`, `src_7d_amount_std`*
+2. **[high]** Destination dormant 918,960 s (~10.6 days) before this transfer,
+   consistent with funds introduced into a previously inactive account. *cites
+   feature `dst_dormancy_seconds`*
+3. **[medium]** Transfer routed from a high-velocity source to a dormant
+   destination with no inbound activity to that destination in the trailing 24h.
+   *cites transaction `TXN-TEST-760995`*
+4. **[medium]** Rapid, sequential outbound transfers to multiple distinct
    counterparties within 24h, consistent with distribution/layering. *cites
-   transactions `2313440`, `2313441`, `2313439`*
+   transactions `TXN-HIST-2313440`, `TXN-HIST-2313441`, `TXN-HIST-2313439`*
 
 **Recommended action:** priority `immediate`, SAR consideration `true`. Obtain
 beneficial-ownership and business-purpose documentation for both accounts,
-request transaction narratives for the 7-day window, and investigate the
-counterparty set and the destination's dormancy-then-reactivation.
+request transaction narratives for the 7-day window, investigate the
+destination's dormancy and any recent reactivation, and cross-reference the
+source entity's counterparties for common beneficial owners or layering chains.
 
-Regulatory references cited: 31 CFR §1010.320; FinCEN SAR Narrative Guidance
-§III.D (layering); FATF integration stage.
+Regulatory references cited: 31 CFR §1010.320; FATF integration stage; FinCEN
+SAR Narrative Guidance §III.D (layering).
 
 ---
 
