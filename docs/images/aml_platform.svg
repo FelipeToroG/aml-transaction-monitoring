@@ -48,7 +48,7 @@
   <text x="408" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">lift over random</text>
   <text x="640" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">22.4%</text>
   <text x="640" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">recall, capacity-bound</text>
-  <text x="872" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">49</text>
+  <text x="872" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">53</text>
   <text x="872" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">tests passing</text>
   <text x="1104" y="488" text-anchor="middle" font-size="36" font-weight="800" fill="#FFFFFF">&lt;150ms</text>
   <text x="1104" y="516" text-anchor="middle" font-size="13" fill="#94A3B8">p99 scoring target</text>
