@@ -372,6 +372,6 @@ These items came out of the v0 incident retrospective and are now complete:
 ## Contact
 
 **Felipe Toro**
-[LinkedIn](https://linkedin.com/in/felipe-toro-g) · [Portfolio](https://felipetorog.github.io/Portfolio) · ftoro26@gmail.com
+[LinkedIn](https://linkedin.com/in/felipe-toro-g) · ftoro26@gmail.com
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
