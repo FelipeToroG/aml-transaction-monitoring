@@ -5,7 +5,7 @@ five times the alert volume the operations team can review. Cost-weighted
 Precision@k captures *what* the model gets right at a fixed review
 capacity, but it does not describe *how* the alerts arrive at the
 investigator, *how long* they wait in queue, or *which* alerts breach
-their SLA. Those are operational properties — they require simulation.
+their SLA. Those are operational properties - they require simulation.
 
 This module simulates the alert-to-disposition flow under a configurable
 analyst pool and queue policy. It produces a per-alert outcome table

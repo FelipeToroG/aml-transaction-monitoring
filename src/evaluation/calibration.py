@@ -19,12 +19,12 @@ both matter:
 
 This module provides three calibration utilities:
 
-* :func:`reliability_curve` — Binned predicted-versus-actual data for
+* :func:`reliability_curve` - Binned predicted-versus-actual data for
   plotting reliability diagrams.
-* :func:`brier_score` — Mean squared error between predicted
+* :func:`brier_score` - Mean squared error between predicted
   probability and binary label. A scalar discriminator-and-calibration
   combined score.
-* :func:`expected_calibration_error` — Weighted mean absolute
+* :func:`expected_calibration_error` - Weighted mean absolute
   bin-by-bin calibration gap. The headline calibration metric.
 """
 
@@ -140,9 +140,9 @@ def brier_score(y_true: np.ndarray, probabilities: np.ndarray) -> float:
     Lower is better. Captures both discrimination and calibration in a
     single scalar.
 
-    The Brier score is properly scored — a model that misrepresents its
+    The Brier score is properly scored - a model that misrepresents its
     own confidence to game the metric will score worse than one that
-    reports true probabilities — which makes it the right primary
+    reports true probabilities - which makes it the right primary
     calibration scalar.
     """
     if len(y_true) != len(probabilities):

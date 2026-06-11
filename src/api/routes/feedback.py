@@ -111,7 +111,7 @@ def record_feedback(
 
     # Increment the feedback distribution counter. The disposition-by-tier
     # breakdown is the headline signal that the model is producing the
-    # right alerts at the right rates — a sustained shift in
+    # right alerts at the right rates - a sustained shift in
     # cleared-rate-per-tier indicates either model drift or the
     # investigator team's evolving disposition policy.
     record_feedback(disposition=request.disposition.value, tier=alert.tier.value)

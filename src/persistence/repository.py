@@ -12,7 +12,7 @@ buys two things:
    anywhere, and there is one place to add row-level access controls
    when the deployment grows multi-tenant.
 
-Three repositories — one per table — keep the responsibilities clean.
+Three repositories - one per table - keep the responsibilities clean.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ class AlertRepository:
         The narrator output (``narrative_payload``, etc.) is null at
         creation time and populated later via :meth:`set_narrative`.
         This split keeps the scoring path's transactional boundary
-        minimal — the LLM call happens outside the alert's creation
+        minimal - the LLM call happens outside the alert's creation
         commit so a triage failure does not roll back the alert
         record itself.
         """
@@ -258,7 +258,7 @@ class AuditLogRepository:
 
     The audit log has different access patterns from the alert table:
     writes happen on every state transition, reads happen rarely (during
-    compliance review). The repository surface reflects this — write
+    compliance review). The repository surface reflects this - write
     methods are first-class, read methods are deliberately narrow.
     """
 

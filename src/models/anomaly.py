@@ -15,7 +15,7 @@ for production use:
 2. **Reproducibility metadata**: the fit captures the calibration
    percentiles, which are required for inference. The fitted object
    carries everything needed to reproduce a score given the same input
-   — required for audit traceability of any alert the model produced.
+ - required for audit traceability of any alert the model produced.
 """
 
 from __future__ import annotations
@@ -36,10 +36,15 @@ class AnomalyScorer:
     n_estimators : int
         Number of trees in the forest. Higher values reduce variance at
         roughly linear cost.
-    max_samples : float
-        Fraction of the training set used to build each tree. Values
-        below 1.0 add ensemble diversity and reduce overfit on dense
-        regions of feature space.
+    max_samples : int | float
+        Subsample size used to build each tree, passed through to
+        sklearn. An int is an absolute sample count, a float is a
+        fraction of the training set. Prefer a small absolute count:
+        Isolation Forest is designed for small subsamples (sklearn
+        defaults to 256), which preserves the isolation property and
+        keeps memory flat. A fraction of a multi-million-row fold both
+        degrades detection and explodes memory (it OOM-killed the v1
+        full train), so configs pass an absolute count here.
     contamination : float
         The expected positive (anomalous) rate. Used by Isolation Forest
         to set its internal decision boundary; we override the decision
@@ -63,7 +68,7 @@ class AnomalyScorer:
     """
 
     n_estimators: int = 200
-    max_samples: float = 0.8
+    max_samples: int | float = 256
     contamination: float = 0.01
     max_features: float = 1.0
     random_state: int = 42
@@ -84,7 +89,12 @@ class AnomalyScorer:
             contamination=self.contamination,
             max_features=self.max_features,
             random_state=self.random_state,
-            n_jobs=-1,
+            # Single-process fit on purpose. n_jobs=-1 spawned a worker per
+            # thread (32 here), each memory-mapping the 3.55M-row feature
+            # matrix, which OOM-killed the v1 full train (105GB total-vm at the
+            # kill). With the small max_samples subsample a single process is
+            # fast anyway, so the parallelism only bought a memory blowup.
+            n_jobs=1,
         )
 
     def fit(self, X: np.ndarray) -> "AnomalyScorer":

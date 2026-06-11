@@ -57,7 +57,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Database schema verified / created.")
     except Exception as exc:  # noqa: BLE001
         # A failure here is operator-actionable (likely bad
-        # DATABASE_URL) but should not prevent the app from starting —
+        # DATABASE_URL) but should not prevent the app from starting - 
         # the health endpoint surfaces the database_healthy=False
         # signal, which is the right place for the operator to see it.
         logger.error("Database initialisation failed: %s", exc)

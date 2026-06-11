@@ -49,7 +49,7 @@ from src.data.loader import (
     TIMESTAMP_COLUMN,
 )
 
-# Velocity is computed on a single window — the 24-hour daily cycle is
+# Velocity is computed on a single window - the 24-hour daily cycle is
 # the canonical window in published AML practice because most mule
 # operations resolve within one banking day. Multi-window velocity is
 # subsumed by the entity rolling features in entity_features.py.
@@ -114,13 +114,13 @@ def compute_velocity_features(frame: pd.DataFrame) -> pd.DataFrame:
         columns={SOURCE_ACCOUNT_COLUMN: "_entity"}
     )
 
-    # Sort all three by (timestamp, _entity) — timestamp first.
+    # Sort all three by (timestamp, _entity) - timestamp first.
     # ``merge_asof`` requires the ``on`` key to be globally monotonically
     # increasing on both sides; the ``by`` parameter only buckets the
     # join logic, it does not relax the sort requirement. Pandas 2.x
     # enforces this strictly (older versions were lenient). Sorting by
     # ``[_entity, timestamp]`` would only sort timestamps within each
-    # entity, which is not enough — leading to "left keys must be
+    # entity, which is not enough - leading to "left keys must be
     # sorted". With timestamp first, the global ordering holds and each
     # per-entity subsequence remains sorted as well.
     target = target.sort_values([TIMESTAMP_COLUMN, "_entity"])
@@ -160,7 +160,7 @@ def compute_velocity_features(frame: pd.DataFrame) -> pd.DataFrame:
     # Throughput-to-baseline ratio. The "baseline" is the entity's
     # all-time average daily outbound amount, computed offline. Here
     # we approximate it with the entity's all-time outbound mean
-    # transaction amount — a simpler but well-correlated baseline that
+    # transaction amount - a simpler but well-correlated baseline that
     # avoids a second time-series aggregation. The production-grade
     # baseline (per-entity historical daily-amount mean) is computed
     # in the offline feature store and joined here; the in-process

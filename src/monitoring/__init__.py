@@ -4,12 +4,12 @@ Three monitoring concerns live here. All are non-optional for any AML
 system that needs to satisfy bank model-risk-management requirements
 (US SR 11-7; equivalent provisions in EU and UK guidelines):
 
-* ``drift`` — Population Stability Index on top-k features and on the
+* ``drift`` - Population Stability Index on top-k features and on the
   prediction distribution, with severity classification and snapshot
   generation.
-* ``fairness`` — segment-level demographic parity, equal opportunity,
+* ``fairness`` - segment-level demographic parity, equal opportunity,
   and FPR parity computations plus per-metric parity-gap calculation.
-* ``alerts`` — threshold tables that classify drift and fairness
+* ``alerts`` - threshold tables that classify drift and fairness
   metric values into ``monitor`` / ``warning`` / ``regulator-relevant``
   severity bands.
 

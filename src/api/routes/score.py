@@ -95,7 +95,7 @@ def score_transaction(
 
     # ----- Ensemble scoring -----
     try:
-        combined_scores = ensemble.score(frame)
+        risk_scores, anomaly_scores = ensemble.score_components(frame)
     except Exception as exc:
         logger.exception("Ensemble scoring failed for transaction %s", request.transaction_id)
         raise HTTPException(
@@ -103,18 +103,25 @@ def score_transaction(
             detail=f"Scoring engine error: {exc}",
         ) from exc
 
-    risk_score = float(combined_scores[0])
+    risk_score = float(risk_scores[0])
+    # The anomaly score comes from the same transform that produced the risk
+    # score (the trailing stacking-feature column), so the component shown to
+    # investigators is exactly the value the model consumed.
+    anomaly_score = float(anomaly_scores[0])
+    # Under stacking the supervised model IS the final model: it consumes the
+    # anomaly score as a feature and emits the risk score directly, so the
+    # supervised component equals the risk score. Retained for response / DB
+    # compatibility.
+    # TODO: could be renamed to stacked_model_score or dropped once the
+    # response/persistence schema is revised.
+    supervised_score = risk_score
 
-    # Recompute component scores for the response payload. The ensemble
-    # exposes them via re-scoring; the marginal cost is one feature
-    # pipeline transform on a 1-row frame, which is negligible.
+    # The engineered subset is still needed for the top-feature breakdown
+    # below (raw feature magnitudes), not for re-scoring.
     feature_columns = list(ensemble.feature_columns)
     feature_subset_engineered = _engineered_feature_subset(
         frame=frame, ensemble=ensemble, feature_columns=feature_columns
     )
-    X = ensemble.feature_pipeline.transform(feature_subset_engineered)
-    anomaly_score = float(ensemble.anomaly_scorer.score(X)[0])
-    supervised_score = float(ensemble.supervised_classifier.predict_proba(X)[0, 1])
 
     # ----- Tier assignment -----
     tier_name = _assign_tier(risk_score, alert_thresholds)
@@ -122,7 +129,7 @@ def score_transaction(
 
     # Observe the score distribution by tier. This metric is the
     # foundation of the operator dashboard's "is the model drifting?"
-    # panel — a shift in the per-tier score distribution is the first
+    # panel - a shift in the per-tier score distribution is the first
     # visible sign of model or upstream-data drift.
     record_score(score=risk_score, tier=tier_name)
 
@@ -338,7 +345,7 @@ def _build_evidence_snapshot(
     The snapshot is what the narrator reads at triage time and what
     the audit-trace endpoint returns when a regulator queries an
     historical alert. Structure must therefore be stable across
-    deployments — schema changes require a model_schema_version bump.
+    deployments - schema changes require a model_schema_version bump.
     """
     return {
         "alert_id_placeholder": "set_on_persist",

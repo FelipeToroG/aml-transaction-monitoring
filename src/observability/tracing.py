@@ -3,7 +3,7 @@
 The narrator's :class:`~src.triage.Narrator` consumes a Langfuse-shaped
 client and emits traces on every LLM invocation. This module wraps
 Langfuse construction behind a defensive boundary so callers obtain a
-client when credentials are present and ``None`` otherwise — the
+client when credentials are present and ``None`` otherwise - the
 narrator's trace code already handles both cases.
 
 Why behind a defensive boundary
@@ -54,7 +54,7 @@ def build_langfuse_client(
         from langfuse import Langfuse
 
         return Langfuse(public_key=public_key, secret_key=secret_key, host=host)
-    except Exception as exc:  # noqa: BLE001 — tracing is best-effort
+    except Exception as exc:  # noqa: BLE001 - tracing is best-effort
         logger.warning(
             "Langfuse initialisation failed; continuing without tracing. %s", exc
         )

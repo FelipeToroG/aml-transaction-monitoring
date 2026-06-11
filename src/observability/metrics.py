@@ -46,7 +46,7 @@ SCORE_DISTRIBUTION: Final[Histogram] = Histogram(
     "aml_transaction_score",
     "Distribution of combined risk scores across all scored transactions.",
     labelnames=["tier"],
-    # Buckets concentrate where decisions flip — between the suppressed
+    # Buckets concentrate where decisions flip - between the suppressed
     # threshold (0.30) and the tier-3 threshold (0.85). Outside that band
     # the score distribution is dense enough that a single bucket suffices.
     buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0),
@@ -56,8 +56,8 @@ LLM_LATENCY_SECONDS: Final[Histogram] = Histogram(
     "aml_llm_latency_seconds",
     "End-to-end LLM call latency including retries.",
     labelnames=["model", "outcome"],
-    # Anthropic Sonnet typically returns in 2–8 s for the project's
-    # prompt size; Haiku in 0.5–2 s. Buckets cover both with headroom
+    # Anthropic Sonnet typically returns in 2-8 s for the project's
+    # prompt size; Haiku in 0.5-2 s. Buckets cover both with headroom
     # for tail latencies that would page the on-call operator.
     buckets=(0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0),
 )
@@ -119,7 +119,7 @@ def _estimate_llm_cost_usd(
     """Return the estimated USD cost of one LLM call.
 
     Internal helper. Returns 0 for unknown models (logged at WARNING)
-    rather than raising — operability over strict-typing matters for
+    rather than raising - operability over strict-typing matters for
     the metrics layer because a misconfigured model name should not
     take down the scoring path.
     """

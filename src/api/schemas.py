@@ -9,7 +9,7 @@ The schemas import from the canonical domain types where possible
 (e.g., ``CaseNarrative`` from ``src.triage``) so the HTTP surface and
 the internal types stay in lock-step. A change to the internal
 narrative shape propagates to the API contract automatically and
-breaks the OpenAPI doc test in CI — the right place to catch it.
+breaks the OpenAPI doc test in CI - the right place to catch it.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ class TransactionScoreResponse(BaseModel):
 
     ``alert_id`` is populated when the score crossed the alert
     threshold and an alert was persisted. Below the threshold,
-    ``alert_id`` is null and ``alert_created`` is false — the caller
+    ``alert_id`` is null and ``alert_created`` is false - the caller
     has scored the transaction but no operational alert exists.
     """
 
@@ -217,7 +217,7 @@ class HealthResponse(BaseModel):
     """Liveness and readiness response.
 
     Includes the configured threshold so a deployer can verify a fresh
-    rollout is actually serving the version they expect — the embedded
+    rollout is actually serving the version they expect - the embedded
     threshold differs between releases and is the single most common
     "did the deployment actually happen?" signal.
     """

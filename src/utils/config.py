@@ -2,11 +2,11 @@
 
 Two configuration surfaces are loaded here:
 
-* **Environment-variable settings** via Pydantic Settings — secrets,
+* **Environment-variable settings** via Pydantic Settings - secrets,
   per-environment overrides, and runtime feature flags. The
   ``Settings`` class is constructed once at API startup and injected
   through FastAPI's dependency system.
-* **YAML configs** — the structural configuration that does not vary
+* **YAML configs** - the structural configuration that does not vary
   between environments (scoring weights, alert thresholds, cost
   matrix, model search spaces). Each is loaded lazily from disk on
   first access and cached for the life of the process.

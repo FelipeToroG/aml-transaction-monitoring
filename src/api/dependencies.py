@@ -1,7 +1,7 @@
 """FastAPI dependency-injected resources.
 
-Every shared resource the API uses — the loaded model, the database
-session factory, the Anthropic narrator, the webhook client — is
+Every shared resource the API uses - the loaded model, the database
+session factory, the Anthropic narrator, the webhook client - is
 obtained through these dependency functions. Route handlers declare
 what they need via ``Depends(...)``, FastAPI resolves and injects, and
 the test suite can override any of them with one ``app.dependency_overrides``
@@ -93,7 +93,7 @@ def get_audit_log_repository(session: Session) -> AuditLogRepository:
 
 
 # ---------------------------------------------------------------------
-# Model ensemble — singleton loaded at startup
+# Model ensemble - singleton loaded at startup
 # ---------------------------------------------------------------------
 
 
@@ -117,7 +117,7 @@ def get_ensemble() -> AMLEnsemble:
 
 
 # ---------------------------------------------------------------------
-# Narrator — singleton constructed at startup
+# Narrator - singleton constructed at startup
 # ---------------------------------------------------------------------
 
 

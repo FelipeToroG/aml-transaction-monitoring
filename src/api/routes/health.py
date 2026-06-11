@@ -1,7 +1,7 @@
 """Health and metrics endpoints.
 
 ``GET /health`` returns a structured liveness/readiness response
-including model version and decision threshold — the latter is the
+including model version and decision threshold - the latter is the
 most reliable "is this actually the deployment I expect" signal,
 because the threshold changes between training runs while everything
 else (version string) may not.
@@ -39,7 +39,7 @@ def health(
     """Liveness and readiness probe.
 
     The endpoint deliberately does not depend on the LLM provider
-    being reachable — Claude availability is not a readiness condition
+    being reachable - Claude availability is not a readiness condition
     for the service because the scoring path runs without LLM
     involvement. Triage-only failure modes degrade gracefully via the
     narrator's refusal path.
@@ -47,7 +47,7 @@ def health(
     # ----- Model load check -----
     # Attempt to access the cached ensemble. We swallow load errors
     # here because health probes must return promptly even when the
-    # model artifact is missing — the operator needs that signal.
+    # model artifact is missing - the operator needs that signal.
     model_loaded = False
     model_version: str | None = None
     model_schema_version: int | None = None

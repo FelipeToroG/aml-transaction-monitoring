@@ -1,6 +1,6 @@
 # Deployment guide
 
-## Local — Docker Compose
+## Local - Docker Compose
 
 The fastest path from clone to running service.
 
@@ -14,7 +14,7 @@ cp .env.example .env
 
 # Ensure the model artifact exists.
 bash scripts/download_data.sh   # ~5 minutes
-bash scripts/train.sh           # ~30–45 minutes on M-series Mac
+bash scripts/train.sh           # ~30-45 minutes on M-series Mac
 
 # Bring up the stack.
 mkdir -p data/runtime
@@ -28,7 +28,7 @@ Then:
 - Health: http://localhost:8000/health
 - Smoke:  `bash scripts/smoke_test_api.sh`
 
-## Local — virtual environment (no Docker)
+## Local - virtual environment (no Docker)
 
 ```bash
 python3.11 -m venv venv
@@ -52,7 +52,7 @@ uvicorn src.api.main:app --reload --port 8000
 streamlit run ui/app.py
 ```
 
-## Cloud — Render / Fly.io
+## Cloud - Render / Fly.io
 
 Both providers accept the multi-stage Dockerfile in this repo with no modification.
 

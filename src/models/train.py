@@ -41,7 +41,12 @@ from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 
 from src import __version__
-from src.data.loader import DEFAULT_RAW_PATH, LABEL_COLUMN, DataLoader
+from src.data.loader import (
+    DEFAULT_RAW_PATH,
+    LABEL_COLUMN,
+    TIMESTAMP_COLUMN,
+    DataLoader,
+)
 from src.data.splits import temporal_train_val_test_split
 from src.evaluation.metrics import (
     CostMatrix,
@@ -52,7 +57,6 @@ from src.features.pipelines import (
     build_engineered_frame,
     build_feature_pipeline,
 )
-from src.models.anomaly import AnomalyScorer
 from src.models.classifier import build_classifier
 from src.models.ensemble import build_ensemble_from_components
 
@@ -62,6 +66,17 @@ logger = logging.getLogger(__name__)
 # want WARNING-level Optuna logs so the trial-level logging from this
 # module is the dominant signal in the console output.
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+# Engineered-feature cache. Building the engineered frame is the slow
+# step (rolling per-entity aggregates over millions of rows), so the
+# result is memoised to parquet alongside a JSON sidecar. The cache key
+# is the pair (raw CSV mtime, sample_fraction): either value changing
+# invalidates the cache. The sample_fraction half is load-bearing,
+# without it a fractionally sampled frame from an iteration run could be
+# served to a full-data run and silently train on a sliver of the rows.
+_FEATURE_CACHE_DIR = Path("data/processed")
+_FEATURE_CACHE_FRAME_PATH = _FEATURE_CACHE_DIR / "features.parquet"
+_FEATURE_CACHE_META_PATH = _FEATURE_CACHE_DIR / "features.meta.json"
 
 
 def main(
@@ -73,6 +88,7 @@ def main(
     model_output_path: Path = Path("models/ensemble.pkl"),
     summary_output_path: Path = Path("mlruns/training_summary.json"),
     mlflow_experiment: str = "aml-transaction-monitoring",
+    sample_fraction: float | None = None,
 ) -> dict[str, Any]:
     """Run the end-to-end training pipeline.
 
@@ -85,7 +101,8 @@ def main(
 
     # ----- Load configs -----------------------------------------------
     model_config = _load_yaml(model_config_path)
-    api_config = _load_yaml(api_config_path)
+    # api_config is no longer read here: stacking removed the blend weights
+    # the trainer used to pull from it. The path arg is kept for CLI stability.
     cost_matrix = CostMatrix.from_yaml(str(cost_matrix_path))
 
     # ----- Load and prepare data --------------------------------------
@@ -96,8 +113,28 @@ def main(
     logger.info("Loaded %d transactions; positive rate %.5f",
                 len(frame), frame[LABEL_COLUMN].mean())
 
-    logger.info("Engineering features (this is the slow step)...")
-    bundle = build_engineered_frame(frame)
+    if sample_fraction is not None:
+        # Pipeline-verification tool only: this trims wall-clock so the
+        # slow feature build runs over a fraction of the rows during
+        # plumbing checks. Metrics produced at small fractions are not
+        # meaningful, and a small early slice may contain very few (or
+        # zero) positives given the ~0.1% base rate.
+        #
+        # The slice is a contiguous early time window, not a random
+        # sample. Engineered features are rolling per-entity aggregates
+        # and the train/val/test split is chronological, so random
+        # sampling would tear holes in entity histories and scramble the
+        # temporal ordering the split depends on. Sorting by timestamp
+        # and taking the leading rows preserves both.
+        original_rows = len(frame)
+        frame = frame.sort_values(TIMESTAMP_COLUMN, kind="stable")
+        frame = frame.head(int(original_rows * sample_fraction)).reset_index(drop=True)
+        logger.info("Subsampled to %d/%d rows (fraction=%.4f, contiguous early slice)",
+                    len(frame), original_rows, sample_fraction)
+
+    bundle = _load_or_build_features(
+        frame, raw_path=raw_path, sample_fraction=sample_fraction
+    )
     logger.info("Engineered %d feature columns", len(bundle.numerical_columns) + len(bundle.categorical_columns))
 
     logger.info("Performing temporal train/val/test split")
@@ -128,6 +165,26 @@ def main(
             }
         )
 
+        # ----- Precompute the stacking feature once -------------------
+        # The Isolation Forest is not swept (the supervised side dominates
+        # the objective), so its config is the midpoint of the search-space
+        # ranges, computed once and shared by the sweep-time stacking feature
+        # and the final model so both train against the same anomaly signal.
+        anomaly_hp = _default_hyperparameters_from_search_space(
+            model_config["families"]["isolation_forest"]
+        )
+        # Preprocessing and the IF are family-independent and the IF is not
+        # swept, so fit them once and reuse the augmented train/val matrices
+        # across every family's trials. This collapses the IF fit from
+        # (families x trials) to one and drops the per-trial preprocessing
+        # refit the old loop paid for nothing.
+        X_train_aug, X_val_aug = _build_sweep_matrices(
+            bundle=bundle,
+            split_train=split.train,
+            split_val=split.val,
+            anomaly_hp=anomaly_hp,
+        )
+
         # ----- Optuna sweep per family --------------------------------
         family_winners: dict[str, dict[str, Any]] = {}
         for family, search_space in model_config["families"].items():
@@ -141,10 +198,9 @@ def main(
             best_trial_info = _run_family_sweep(
                 family=family,
                 search_space=search_space,
-                bundle=bundle,
-                split_train=split.train,
-                split_val=split.val,
+                X_train=X_train_aug,
                 y_train=y_train,
+                X_val=X_val_aug,
                 y_val=y_val,
                 cost_matrix=cost_matrix,
                 global_cfg=model_config["global"],
@@ -173,51 +229,50 @@ def main(
             family=winning_family,
             hyperparameters=winning_info["hyperparameters"],
             calibrate=True,
+            anomaly_hp=anomaly_hp,
         )
 
-        # ----- Fit anomaly head on train+val --------------------------
-        logger.info("Fitting Isolation Forest anomaly head")
-        anomaly_search = model_config["families"]["isolation_forest"]
-        anomaly_hp = _default_hyperparameters_from_search_space(anomaly_search)
-        anomaly_scorer = _fit_anomaly_component(
-            bundle=bundle,
-            pipeline=final_pipeline,
-            frame=train_val_frame,
-            hyperparameters=anomaly_hp,
-        )
+        # The Isolation Forest now lives inside the fitted pipeline as the
+        # stacking feature. Read the fitted scorer back out for the ensemble
+        # metadata and audit record; it is not a separate scoring path.
+        anomaly_scorer = final_pipeline.named_steps["anomaly"].anomaly_scorer_
 
         # ----- Tune decision threshold on val -------------------------
         logger.info("Tuning decision threshold on validation fold")
-        anomaly_weight = api_config["scoring"]["anomaly_weight"]
-        supervised_weight = api_config["scoring"]["supervised_weight"]
+        feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
 
-        X_val = final_pipeline.transform(
-            split.val[list(bundle.numerical_columns + bundle.categorical_columns)]
-        )
-        anomaly_val = anomaly_scorer.score(X_val)
-        supervised_val = final_classifier.predict_proba(X_val)[:, 1]
-        combined_val = anomaly_weight * anomaly_val + supervised_weight * supervised_val
+        # Stacking: the anomaly score is a feature inside final_pipeline, so
+        # the risk score is just the calibrated supervised probability on the
+        # augmented matrix. There is no post-hoc weighted blend.
+        X_val_final = final_pipeline.transform(split.val[feature_columns])
+        combined_val = final_classifier.predict_proba(X_val_final)[:, 1]
+
+        # The fold's fixed operational alert budget: the team reviews
+        # exactly k_per_day alerts, and this is the same k the metric
+        # defaults to for the final test evaluation below. Computing it
+        # once here and threading it into both the threshold tuner and the
+        # test eval makes the shared budget explicit, so val tuning and
+        # test selection provably operate at an identical k.
+        operational_k = cost_matrix.k_per_day
 
         decision_threshold, threshold_eval = _tune_threshold(
             scores=combined_val,
             y_true=y_val,
             cost_matrix=cost_matrix,
+            operational_k=operational_k,
         )
         logger.info("Optimal threshold: %.4f (objective %.4f)",
                     decision_threshold, threshold_eval["objective_cost_per_investigator_hour_usd"])
 
         # ----- Evaluate on test ---------------------------------------
         logger.info("Evaluating on held-out test fold")
-        X_test = final_pipeline.transform(
-            split.test[list(bundle.numerical_columns + bundle.categorical_columns)]
-        )
-        anomaly_test = anomaly_scorer.score(X_test)
-        supervised_test = final_classifier.predict_proba(X_test)[:, 1]
-        combined_test = anomaly_weight * anomaly_test + supervised_weight * supervised_test
+        X_test_final = final_pipeline.transform(split.test[feature_columns])
+        combined_test = final_classifier.predict_proba(X_test_final)[:, 1]
         test_eval = cost_weighted_precision_at_k(
             y_true=y_test,
             scores=combined_test,
             cost_matrix=cost_matrix,
+            k=operational_k,
         )
         logger.info("Test objective: %.4f precision@k: %.4f",
                     test_eval["objective_cost_per_investigator_hour_usd"],
@@ -229,8 +284,6 @@ def main(
             fitted_pipeline=final_pipeline,
             fitted_anomaly=anomaly_scorer,
             fitted_classifier=final_classifier,
-            anomaly_weight=anomaly_weight,
-            supervised_weight=supervised_weight,
             decision_threshold=decision_threshold,
             selected_family=winning_family,
             selected_hyperparameters=winning_info["hyperparameters"],
@@ -286,25 +339,103 @@ def main(
 # ---------------------------------------------------------------------
 
 
+def _load_or_build_features(
+    frame: pd.DataFrame,
+    *,
+    raw_path: Path,
+    sample_fraction: float | None,
+) -> FeatureBundle:
+    """Return the engineered bundle, reusing the parquet cache when valid.
+
+    The cache is reused only when both the raw CSV mtime and the
+    sample_fraction match the sidecar a prior run wrote. A mismatch on
+    either rebuilds and overwrites, which is what keeps a sampled feature
+    frame from ever being served to a full run.
+    """
+    raw_mtime = raw_path.stat().st_mtime
+    cached = _read_feature_cache(raw_mtime=raw_mtime, sample_fraction=sample_fraction)
+    if cached is not None:
+        logger.info("Feature cache hit at %s; skipping the slow feature build",
+                    _FEATURE_CACHE_FRAME_PATH)
+        return cached
+
+    logger.info("Feature cache miss; engineering features (this is the slow step)...")
+    bundle = build_engineered_frame(frame)
+    _write_feature_cache(bundle, raw_mtime=raw_mtime, sample_fraction=sample_fraction)
+    logger.info("Rebuilt feature cache at %s", _FEATURE_CACHE_FRAME_PATH)
+    return bundle
+
+
+def _read_feature_cache(
+    *, raw_mtime: float, sample_fraction: float | None
+) -> FeatureBundle | None:
+    """Reconstruct a FeatureBundle from the cache when its key matches.
+
+    Returns None when the cache is absent or stale so the caller falls
+    back to a rebuild. The frame is restored from parquet while the
+    column-list metadata travels in the sidecar, so the reconstructed
+    bundle is indistinguishable from a freshly built one and every
+    downstream consumer stays unchanged.
+    """
+    if not (_FEATURE_CACHE_FRAME_PATH.exists() and _FEATURE_CACHE_META_PATH.exists()):
+        return None
+
+    meta = json.loads(_FEATURE_CACHE_META_PATH.read_text())
+    # Both halves of the key must match. Comparing sample_fraction here is
+    # the guard that stops a fractionally sampled frame from satisfying a
+    # full-data request (None vs a float never compares equal).
+    if (
+        meta.get("raw_mtime") != raw_mtime
+        or meta.get("sample_fraction") != sample_fraction
+    ):
+        return None
+
+    frame = pd.read_parquet(_FEATURE_CACHE_FRAME_PATH)
+    return FeatureBundle(
+        frame=frame,
+        numerical_columns=tuple(meta["numerical_columns"]),
+        categorical_columns=tuple(meta["categorical_columns"]),
+    )
+
+
+def _write_feature_cache(
+    bundle: FeatureBundle, *, raw_mtime: float, sample_fraction: float | None
+) -> None:
+    """Persist the engineered frame and the sidecar that keys the cache."""
+    _FEATURE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    bundle.frame.to_parquet(_FEATURE_CACHE_FRAME_PATH)
+    # The column lists are recorded so a cache hit can rebuild the bundle
+    # without re-deriving them, and the key fields so the next run can
+    # decide hit-or-rebuild without touching the (large) parquet file.
+    meta = {
+        "raw_mtime": raw_mtime,
+        "sample_fraction": sample_fraction,
+        "numerical_columns": list(bundle.numerical_columns),
+        "categorical_columns": list(bundle.categorical_columns),
+    }
+    _FEATURE_CACHE_META_PATH.write_text(json.dumps(meta, indent=2))
+
+
 def _run_family_sweep(
     *,
     family: str,
     search_space: dict[str, Any],
-    bundle: FeatureBundle,
-    split_train: pd.DataFrame,
-    split_val: pd.DataFrame,
+    X_train: np.ndarray,
     y_train: np.ndarray,
+    X_val: np.ndarray,
     y_val: np.ndarray,
     cost_matrix: CostMatrix,
     global_cfg: dict[str, Any],
 ) -> dict[str, Any]:
     """Run an Optuna sweep for a single classifier family.
 
-    Each trial: sample hyperparameters → fit pipeline + classifier on
-    train → score val → cost-weighted Precision@k. The best trial wins
+    Preprocessing and the Isolation Forest stacking feature are fit once by
+    the caller and passed in as the augmented ``X_train`` / ``X_val``
+    matrices, so each trial only fits and scores the supervised classifier:
+    sample hyperparameters → fit on the augmented train matrix → score the
+    augmented val matrix → cost-weighted Precision@k. The best trial wins
     the family.
     """
-    feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
 
     def objective(trial: optuna.Trial) -> float:
         # Sample hyperparameters per the search space definition. The
@@ -317,15 +448,7 @@ def _run_family_sweep(
             random_state=global_cfg["random_state"],
             calibrate=False,  # calibration is applied to the final winner
         )
-
-        pipeline = build_feature_pipeline(
-            numerical_columns=bundle.numerical_columns,
-            categorical_columns=bundle.categorical_columns,
-        )
-        X_train = pipeline.fit_transform(split_train[feature_columns])
         classifier.fit(X_train, y_train)
-
-        X_val = pipeline.transform(split_val[feature_columns])
         proba = classifier.predict_proba(X_val)[:, 1]
         result = cost_weighted_precision_at_k(
             y_true=y_val,
@@ -428,12 +551,19 @@ def _fit_supervised_component(
     family: str,
     hyperparameters: dict[str, Any],
     calibrate: bool,
+    anomaly_hp: dict[str, Any],
 ) -> tuple[Pipeline, BaseEstimator]:
-    """Fit the feature pipeline and supervised classifier on the provided fold."""
+    """Fit the augmented feature pipeline and supervised classifier on a fold.
+
+    The pipeline includes the Isolation Forest stacking step (``anomaly_hp``),
+    so the classifier is trained on the augmented matrix and the fitted forest
+    is reachable at ``pipeline.named_steps["anomaly"].anomaly_scorer_``.
+    """
     feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
     pipeline = build_feature_pipeline(
         numerical_columns=bundle.numerical_columns,
         categorical_columns=bundle.categorical_columns,
+        anomaly=anomaly_hp,
     )
     X = pipeline.fit_transform(frame[feature_columns])
 
@@ -446,25 +576,31 @@ def _fit_supervised_component(
     return pipeline, classifier
 
 
-def _fit_anomaly_component(
+def _build_sweep_matrices(
     *,
     bundle: FeatureBundle,
-    pipeline: Pipeline,
-    frame: pd.DataFrame,
-    hyperparameters: dict[str, Any],
-) -> AnomalyScorer:
-    """Fit the Isolation Forest on the same feature space as the classifier.
+    split_train: pd.DataFrame,
+    split_val: pd.DataFrame,
+    anomaly_hp: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit preprocessing + the Isolation Forest once and return augmented X.
 
-    The anomaly head consumes the same preprocessed feature matrix as
-    the supervised head — ensures both score on the same view of the
-    data and the ensemble combination is on commensurable inputs.
+    The scaler/encoder and the stacking forest are family-independent and the
+    forest is not swept, so they are fit a single time on the train fold and
+    applied to train and val. Every family's trials then reuse the returned
+    augmented matrices, which is what keeps the IF fit out of the per-trial
+    loop. The fitted pipeline is intentionally discarded: the final model
+    refits its own pipeline on train+val.
     """
     feature_columns = list(bundle.numerical_columns + bundle.categorical_columns)
-    X = pipeline.transform(frame[feature_columns])
-
-    scorer = AnomalyScorer(**hyperparameters)
-    scorer.fit(X)
-    return scorer
+    pipeline = build_feature_pipeline(
+        numerical_columns=bundle.numerical_columns,
+        categorical_columns=bundle.categorical_columns,
+        anomaly=anomaly_hp,
+    )
+    X_train = pipeline.fit_transform(split_train[feature_columns])
+    X_val = pipeline.transform(split_val[feature_columns])
+    return X_train, X_val
 
 
 def _tune_threshold(
@@ -472,47 +608,51 @@ def _tune_threshold(
     scores: np.ndarray,
     y_true: np.ndarray,
     cost_matrix: CostMatrix,
-    n_candidates: int = 200,
+    operational_k: int,
 ) -> tuple[float, dict[str, Any]]:
-    """Sweep candidate decision thresholds and return the cost-optimal one.
+    """Set the decision threshold at the fixed operational alert capacity.
 
-    The threshold is the operational knob — it controls how many alerts
-    investigators see per day. Tuning it on val data (not training)
-    avoids overfitting the threshold to the training distribution.
+    At a fixed alert budget the threshold is a capacity constraint, not an
+    optimisation target: investigators review exactly ``operational_k``
+    alerts per fold, so the threshold is whatever score admits that many
+    and no more. There is nothing to sweep.
+
+    The v0 tuner swept candidate thresholds and evaluated each at a
+    *variable* k equal to the count of predictions above it, then returned
+    the threshold whose objective was best at its own k. That let it settle
+    on a near-zero threshold flagging most of the validation fold: zero
+    false negatives spread over a huge investigator-hour denominator looked
+    optimal, but the chosen k bore no relation to the fixed k=384/day the
+    model is actually evaluated and deployed at, so val and test were never
+    comparable. See the "threshold tuner misaligned with operational k"
+    finding in docs/INCIDENT_REPORT.md.
+
+    ``operational_k`` is supplied by the caller from the same cost matrix
+    that drives the final test evaluation, so val tuning and test eval
+    select on an identical alert budget.
     """
-    # Candidate thresholds: equally spaced across the actual score
-    # distribution rather than [0, 1] uniform, so the search budget
-    # concentrates where decisions actually flip.
-    candidates = np.linspace(
-        float(np.quantile(scores, 0.01)),
-        float(np.quantile(scores, 0.99)),
-        n_candidates,
+    n = len(scores)
+    # A fold smaller than the daily budget cannot surface more alerts than
+    # it has rows, so clamp rather than letting the rank index run off the
+    # end of the array.
+    k = min(operational_k, n)
+
+    # Threshold = the k-th largest score (descending rank k). With distinct
+    # scores this admits exactly k alerts: (scores >= threshold).sum() == k.
+    # np.partition puts the (n - k)-th ascending element in its sorted slot
+    # (that element is the k-th largest) in O(n), avoiding a full sort.
+    # Boundary ties can push the count slightly above k when several rows
+    # share the k-th score; that is accepted and documented rather than
+    # broken with an arbitrary tie-break.
+    threshold = float(np.partition(scores, n - k)[n - k])
+
+    result = cost_weighted_precision_at_k(
+        y_true=y_true,
+        scores=scores,
+        cost_matrix=cost_matrix,
+        k=k,
     )
-
-    best_threshold = float(candidates[0])
-    best_objective = -np.inf
-    best_result: dict[str, Any] = {}
-    for threshold in candidates:
-        predictions = (scores >= threshold).astype(int)
-        # k for evaluation = number of alerts produced at this threshold.
-        # Falls back to a minimum of 1 to keep the metric well-defined
-        # in the degenerate case where the threshold suppresses every
-        # alert.
-        k = max(int(predictions.sum()), 1)
-        if k > len(y_true):
-            continue
-        result = cost_weighted_precision_at_k(
-            y_true=y_true,
-            scores=scores,
-            cost_matrix=cost_matrix,
-            k=k,
-        )
-        if result["objective_cost_per_investigator_hour_usd"] > best_objective:
-            best_objective = result["objective_cost_per_investigator_hour_usd"]
-            best_threshold = float(threshold)
-            best_result = result
-
-    return best_threshold, best_result
+    return threshold, result
 
 
 def _build_training_summary(
@@ -606,6 +746,16 @@ if __name__ == "__main__":
         default=Path("mlruns/training_summary.json"),
         help="Where to write the training summary JSON.",
     )
+    parser.add_argument(
+        "--sample-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Train on a contiguous early time slice of this fraction of the "
+            "rows (e.g. 0.02). Pipeline-verification tool only: metrics at "
+            "small fractions are not meaningful. Default trains on full data."
+        ),
+    )
     args = parser.parse_args()
 
     main(
@@ -615,4 +765,5 @@ if __name__ == "__main__":
         api_config_path=args.api_config,
         model_output_path=args.model_output,
         summary_output_path=args.summary_output,
+        sample_fraction=args.sample_fraction,
     )

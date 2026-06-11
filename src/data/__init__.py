@@ -4,8 +4,8 @@ This package owns three concerns that are deliberately co-located:
 
 1. **Schema** (`loader`): the single source of truth for raw column
    names, dtypes, categorical-versus-numerical classification, and the
-   target label. Every downstream module — the feature pipeline, the API
-   request schema, the database models, the test suite — imports from
+   target label. Every downstream module - the feature pipeline, the API
+   request schema, the database models, the test suite - imports from
    here. A rename propagates from one place.
 
 2. **Splits** (`splits`): temporal train/validation/test partitioning.

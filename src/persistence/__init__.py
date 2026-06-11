@@ -1,7 +1,7 @@
 """SQLite persistence for alerts, investigator feedback, and audit log.
 
 SQLAlchemy 2.x is used so the same code targets SQLite locally and
-Postgres in production with no code changes — only the connection URL
+Postgres in production with no code changes - only the connection URL
 differs. The repository pattern keeps queries out of API handlers, which
 makes the persistence layer testable in isolation against an in-memory
 SQLite database.

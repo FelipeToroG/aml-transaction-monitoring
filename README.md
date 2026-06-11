@@ -1,22 +1,24 @@
-# AML Transaction Monitoring & Alert Triage System
+# AML Transaction Monitoring & Alert Triage System with LLM Narratives
 
-End-to-end production AML monitoring service for payment platforms. Hybrid anomaly detection plus supervised classification on a 5M-transaction labeled corpus, cost-sensitive threshold optimization, Claude-powered case narrative generation, an investigator-feedback loop, and live drift and fairness monitoring — packaged as a containerized FastAPI service with a Streamlit investigator review UI.
+![AML Transaction Monitoring Platform with LLM Narratives](docs/images/aml_platform.svg)
+
+End-to-end production AML monitoring service for payment platforms. Hybrid anomaly detection plus supervised classification on a 5M-transaction labeled corpus, cost-sensitive threshold optimization, Claude-powered case narrative generation, an investigator-feedback loop, and live drift and fairness monitoring, packaged as a containerized FastAPI service with a Streamlit investigator review UI.
 
 **Author:** Felipe Toro
 **License:** MIT
-**Status:** v0 — architecture and implementation complete, model trained end-to-end on the full 5M-transaction dataset. The current model artifact was produced by `scripts/salvage_train.py` after the original Optuna sweep hung on a Logistic Regression hyperparameter pathology; the diagnosis and recovery are documented in [docs/INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md). v1 (in progress on a CUDA-equipped workstation) addresses the threshold-tuner alignment, the ensemble combination, and the recall trade-off — see [Roadmap](#roadmap).
+**Status:** v1 - trained end-to-end on the full 5M-transaction dataset via the canonical `src.models.train` pipeline on a CUDA workstation. v1 replaces the v0 weighted-blend ensemble with Isolation-Forest-score stacking, tunes the decision threshold at the fixed operational k, and recalibrates the false-negative cost to regulatory exposure. The v0 issues that motivated these changes are diagnosed in [docs/INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md).
 
 ---
 
 ## TL;DR
 
-A real-time AML transaction monitoring service designed for payments and money-transmitter platforms (Stripe Radar / Wise / Mercury-class teams). Every alert carries a structured, evidence-bound case narrative ready for compliance officer review — no hallucinated facts, every claim traces to a specific transaction or feature value.
+A real-time AML transaction monitoring service designed for payments and money-transmitter platforms (Stripe Radar / Wise / Mercury-class teams). Every alert carries a structured, evidence-bound case narrative ready for compliance officer review: no hallucinated facts, every claim traces to a specific transaction or feature value.
 
 | What | Value |
 |------|-------|
 | Dataset | IBM AML HI-Small (~5M transactions, labeled illicit / licit) |
-| Model architecture | Isolation Forest (anomaly) + gradient-boosted classifier (supervised), score-level ensemble |
-| Models evaluated | 3 supervised families completed (120 Optuna trials); 4th family killed mid-sweep due to a SAGA solver convergence pathology — see [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md) |
+| Model architecture | Isolation Forest anomaly score stacked as a feature into a calibrated LightGBM classifier |
+| Models evaluated | 2 supervised families swept (XGBoost, LightGBM); Random Forest and Logistic Regression dropped as cost-prohibitive at 5M rows - see [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md) |
 | Optimization objective | Investigator-hour-cost-weighted Precision@k |
 | Case narrative generation | Claude (Sonnet for production, Haiku for offline evals) |
 | Alert audit trail | Every alert: feature vector, model version, threshold, narrative, investigator disposition |
@@ -31,17 +33,17 @@ A real-time AML transaction monitoring service designed for payments and money-t
 
 ## Why this project
 
-Banks and fintech compliance teams spend billions annually on AML monitoring and still drown in false positives. Industry-reported AML alert false-positive rates exceed ninety-five percent at most institutions, meaning investigators spend the overwhelming majority of their day clearing benign activity. Reducing that rate — without sacrificing true-positive recall — is the single highest-leverage problem in AML operations.
+Banks and fintech compliance teams spend billions annually on AML monitoring and still drown in false positives. Industry-reported AML alert false-positive rates exceed ninety-five percent at most institutions, meaning investigators spend the overwhelming majority of their day clearing benign activity. Reducing that rate, without sacrificing true-positive recall, is the single highest-leverage problem in AML operations.
 
 This system is built around what production AML monitoring actually requires, not what a notebook demonstrates:
 
 1. **Audit-defensible methodology.** Every alert produces a structured audit trail: feature values, model version, threshold, and the evidence supporting each narrative claim. Compliance officers and regulators can reconstruct any decision.
-2. **Cost-aware objective.** Models are selected on investigator-hour-cost-weighted Precision@k, not AUC-PR. The right model is the one that minimizes total cost — investigator time spent on false positives plus illicit dollars missed — not the one that scores highest on the academically conventional metric.
+2. **Cost-aware objective.** Models are selected on investigator-hour-cost-weighted Precision@k, not AUC-PR. The right model is the one that minimizes total cost (investigator time spent on false positives plus illicit dollars missed), not the one that scores highest on the academically conventional metric.
 3. **Evidence-bound case narratives.** The LLM never invents transactions or features. Every claim in a case narrative cites either a transaction ID or a feature value from the evidence bundle. Refusal-on-low-confidence is built into the prompting layer; hallucination is mathematically constrained, not just discouraged.
 4. **Investigator feedback loop.** Every disposition (cleared / escalated / SAR-filed) flows back into the system. Suppression-rate and false-positive-rate metrics update in real time. The model improves with use rather than rotting in production.
 5. **Fairness and drift as first-class concerns.** Bias audits run on every model release. Population Stability Index monitors feature and prediction drift. Alerts fire when either crosses regulator-relevant tolerance.
 
-I'm a former defense aerospace finance professional transitioning into AI/ML engineering. The domain insight I bring is real: I have defended $300M+ in proposals against federal auditors and built quantitative cost models for high-stakes regulatory environments. Audit-defensibility is not a feature I added — it is the way I think.
+I'm a former defense aerospace finance professional transitioning into AI/ML engineering. The domain insight I bring is real: I have defended $300M+ in proposals against federal auditors and built quantitative cost models for high-stakes regulatory environments. Audit-defensibility is not a feature I added; it is the way I think.
 
 ---
 
@@ -53,12 +55,12 @@ flowchart TB
         A[Transaction event] -->|POST /score| B[FastAPI scoring service]
     end
 
-    subgraph SCORE["Hybrid scoring"]
+    subgraph SCORE["Hybrid scoring (stacking)"]
         B --> C[Feature pipeline<br/>entity + velocity + graph]
         C --> D[Isolation Forest<br/>anomaly score]
-        C --> E[Gradient-boosted classifier<br/>supervised probability]
-        D --> F[Ensemble layer<br/>weighted score + threshold]
-        E --> F
+        C --> E[Calibrated LightGBM<br/>78 features + anomaly score]
+        D --> E
+        E --> F[Decision threshold<br/>fixed operational k=384]
     end
 
     subgraph TRIAGE["Triage"]
@@ -155,7 +157,7 @@ aml-transaction-monitoring/
 - Python 3.11+
 - Docker and docker-compose (optional, for the containerized stack)
 - An Anthropic API key (the case narrative layer calls Claude)
-- The IBM AML HI-Small dataset — see "Reproduce" below
+- The IBM AML HI-Small dataset (see "Reproduce" below)
 
 ### Install
 
@@ -186,7 +188,7 @@ bash scripts/download_data.sh
 # 2. Walk through EDA.
 jupyter notebook notebooks/01_eda.ipynb
 
-# 3. Run the training pipeline (Optuna sweep, ~30–45 min on M-series Mac).
+# 3. Run the training pipeline (Optuna sweep + stacking refit; ~2-3 hours end-to-end on a CUDA workstation, dominated by the train+val refit; the feature cache makes re-runs much faster).
 bash scripts/train.sh
 ```
 
@@ -234,7 +236,7 @@ Prometheus metrics endpoint. Exposes inference latency histograms, alert volume 
 
 ### `POST /score`
 
-Score a single transaction. Returns the hybrid risk score (anomaly plus supervised), tier classification, model version, and the feature attribution that drove the score.
+Score a single transaction. Returns the calibrated risk score (the supervised probability over the feature matrix, which already includes the stacked Isolation Forest anomaly score as a column), tier classification, model version, and the feature attribution that drove the score.
 
 ### `POST /triage`
 
@@ -256,7 +258,7 @@ Full request and response schemas auto-generate at `/docs` (Swagger) and `/redoc
 
 A handful of choices in this repo are deliberate enough that they would survive senior code review.
 
-**Hybrid scoring with score-level ensembling.** Pure supervised models miss novel laundering typologies that did not appear in the training labels. Pure unsupervised models drown investigators in cluster noise. The hybrid scores each transaction with both an Isolation Forest (novelty / pattern-rarity) and a gradient-boosted classifier (learned-pattern probability), then combines them at the score level with calibrated weights. The ensemble outperforms either component on the held-out evaluation.
+**Hybrid scoring with stacking.** Pure supervised models miss novel laundering typologies absent from the training labels; pure unsupervised models drown investigators in cluster noise. The system fits an Isolation Forest (novelty / pattern-rarity) and appends its calibrated anomaly score as a feature column the gradient-boosted classifier consumes alongside the 78 engineered features. Rather than blending the two with hardcoded weights, the supervised model learns the optimal non-linear weighting of the anomaly signal directly. On held-out data the stacked anomaly score ranks among the model's most important features.
 
 **Cost-weighted Precision@k, not AUC-PR.** Investigators have finite review capacity. A model that scores 0.92 AUC-PR but produces four times the alert volume of the production baseline is not deployable. The training objective is investigator-hour-cost-weighted Precision@k, where `k` is calibrated to the team's actual review throughput. This is what model selection looks like when investigator time is the binding constraint.
 
@@ -264,7 +266,7 @@ A handful of choices in this repo are deliberate enough that they would survive 
 
 **Schema lives in one file.** `src/data/loader.py` is the single source of truth for column names, dtypes, and the target column. The API's Pydantic request schema, the feature pipeline's `ColumnTransformer`, the database models, and every test in the suite import from the same constants. A rename in `loader.py` either propagates cleanly or fails loudly at import time.
 
-**Zero-leakage by construction.** All preprocessing — scaling, encoding, target-aware aggregations — lives inside the sklearn Pipeline. The pipeline is fit only on the temporal training split. Validation and test folds never see the fitted transformers before prediction time. Leakage is impossible by construction, not by discipline.
+**Zero-leakage by construction.** All preprocessing (scaling, encoding, target-aware aggregations) lives inside the sklearn Pipeline. The pipeline is fit only on the temporal training split. Validation and test folds never see the fitted transformers before prediction time. Leakage is impossible by construction, not by discipline.
 
 **Asymmetric audit logging.** Every alert is logged with full feature provenance. Cleared alerts retain narrative and features for retraining; escalated alerts additionally log the investigator's free-text justification (when provided) for SAR-narrative training data. The audit log is append-only and indexed for regulator query.
 
@@ -276,15 +278,13 @@ A handful of choices in this repo are deliberate enough that they would survive 
 
 ## Key findings
 
-The results below are from the v0 training run on the full 5M-transaction IBM AML HI-Small dataset. Methodology and metric definitions live in [docs/EVALUATION.md](docs/EVALUATION.md); the per-trial audit trail is preserved in MLflow under the `aml-transaction-monitoring` experiment.
+The results below are from the v1 training run (the canonical src.models.train pipeline) on the full 5M-transaction IBM AML HI-Small dataset. Methodology and metric definitions live in [docs/EVALUATION.md](docs/EVALUATION.md); the per-trial audit trail is preserved in MLflow under the `aml-transaction-monitoring` experiment.
 
-**How to read these numbers.** The headline metric is **Precision@k at the operational alert capacity of k = 384 alerts per day** (8 analysts × 48 alerts per analyst per day). At that operating point the model is **~270× more precise than random alerting** (54.7% vs ~0.2% if 384 alerts were drawn uniformly from 760k test transactions). Recall is 13.5% — deliberately conservative because investigator-hour cost is the binding constraint encoded into the optimization objective. The cost matrix that drove model selection is shown at the bottom of this section.
+**How to read these numbers.** The headline metric is Precision@k at the operational alert capacity of k = 384 alerts per day (8 analysts times 48 alerts each). At that operating point the v1 model is ~445x more precise than random alerting - 91% of the top-384 alerts are real laundering, against a ~0.2% base rate. Recall at k=384 is 22.4%, and that ceiling is structural, not a model weakness: the test window holds 1,561 true laundering cases but the team can review only 384, so even a perfect ranker tops out at 384 / 1,561 = 24.6% recall. The model fills 350 of its 384 daily alerts with real cases. Raising recall is a function of review headcount, not model quality.
 
-**Known v0 limitations** (addressed in v1, see [Roadmap](#roadmap)):
+One caveat so a number is not over-read: test Precision@k (0.91) exceeds validation (0.80) because the held-out test window carries roughly twice the fraud prevalence of validation - the dataset's illicit rate rises over time and the temporal split places the densest period in test, and Precision@k mechanically rises with base rate. Normalized for prevalence (lift = Precision@k / base rate), validation actually edges test (~800x vs ~445x), confirming the higher test precision is a denser positive population, not a stronger model.
 
-1. The validation-fold objective is reported below for completeness but is **not directly comparable to the test objective**. The validation threshold tuner sweeps thresholds at `k = predictions-above-threshold` (a moving target), while final test evaluation uses `k = 384` (fixed). The tuner therefore rewards "flag everything" strategies that look strong on val and weak on test. v1 reworks `_tune_threshold` to evaluate at fixed k=384 throughout.
-2. The Isolation Forest anomaly head's output range turned out narrower than the supervised head (0.32–0.42 vs 0.0–1.0). With the fixed 0.35 anomaly / 0.65 supervised weighted-blend, the anomaly head dilutes XGBoost's signal rather than complementing it. v1 replaces the weighted blend with **stacking** — anomaly score becomes a feature column inside XGBoost — so the supervised model learns the optimal weighting non-linearly.
-3. The Logistic Regression sweep was killed mid-run; only XGBoost, LightGBM, and Random Forest produced complete per-family results. v1 either constrains the LogReg hyperparameter ranges or drops it from the family list entirely.
+A concrete walk-through: of 761,752 test transactions, 1,561 are laundering. The model scores all of them and surfaces the top 384 (the team's daily capacity); ~350 are real and ~34 are false alarms (the 91% precision). The other ~761,368 are never reviewed.
 
 <!-- RESULTS:START -->
 
@@ -292,32 +292,31 @@ The results below are from the v0 training run on the full 5M-transaction IBM AM
 
 | What | Value |
 |---|---|
-| Winning model | XGBoost (selected on cost-weighted Precision@k) |
-| Test set objective | $173,415.41 cost per investigator-hour (negated) |
-| Test Precision @ k | 54.7% (k = 384 alerts) |
-| Test recall (fraud caught) | 13.5% (210 of 1,561) |
-| Test true positives | 210 |
-| Test false positives | 174 |
-| Test false negatives | 1,351 |
-| Test total dollar cost | $15,540,357.58 |
-| Validation objective (tuning fold) | $94.84 cost/hour — **not directly comparable to test** (computed at variable k=452,812 due to the threshold-tuner bug noted above) |
-| Decision threshold | 0.0368 |
-| Models evaluated | 3 families across the Optuna sweep |
+| Winning model | LightGBM (selected on cost-weighted Precision@k) |
+| Test set objective | $216,225.90 cost per investigator-hour (negated) |
+| Test Precision @ k | 91.1% (k = 384 alerts) |
+| Test recall (fraud caught) | 22.4% (350 of 1,561) |
+| Test true positives | 350 |
+| Test false positives | 34 |
+| Test false negatives | 1,211 |
+| Test total dollar cost | $19,376,753.78 |
+| Validation objective (tuning fold) | $80,899.74 cost per investigator-hour (negated) |
+| Decision threshold | 0.0417 |
+| Models evaluated | 2 families across the Optuna sweep |
 
 ### Per-family comparison (validation fold)
 
 | Rank | Family | Validation objective (USD/hr) |
 |------|--------|-------------------------------|
-| 1 | XGBoost | $55,966.25 |
-| 2 | LightGBM | $56,737.71 |
-| 3 | Random Forest | $70,109.65 |
+| 1 | LightGBM | $77,681.49 |
+| 2 | XGBoost | $77,860.28 |
 
 ### Cost matrix used for selection
 
 | Parameter | Value |
 |---|---|
 | Daily review capacity (k) | 384 alerts |
-| False-negative cost | $11,500.00 per missed alert |
+| False-negative cost | $16,000.00 per missed alert |
 | False-positive cost | $22.17 per investigator-cleared alert |
 
 <!-- RESULTS:END -->
@@ -329,8 +328,8 @@ The results below are from the v0 training run on the full 5M-transaction IBM AM
 | Layer | Tools |
 |-------|-------|
 | Data engineering | pandas, NumPy, PyArrow, NetworkX |
-| Modeling — supervised | scikit-learn, XGBoost, LightGBM |
-| Modeling — anomaly | PyOD (Isolation Forest), scikit-learn |
+| Modeling - supervised | scikit-learn, XGBoost, LightGBM |
+| Modeling - anomaly | PyOD (Isolation Forest), scikit-learn |
 | Hyperparameter search | Optuna (TPE sampler, fixed seed) |
 | Experiment tracking | MLflow (filesystem backend, project-local URI) |
 | Calibration & explainability | scikit-learn isotonic / Platt, SHAP |
@@ -348,20 +347,20 @@ The results below are from the v0 training run on the full 5M-transaction IBM AM
 
 ## Roadmap
 
-### v1 — model quality (in progress on a CUDA-equipped workstation)
+### v1 - model quality (shipped)
 
-These items came directly out of the v0 incident retrospective (see [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md)). Each one is a specific, named fix to an issue we found by running the system end-to-end, not a wishlist:
+These items came out of the v0 incident retrospective and are now complete:
 
-1. **Fix the threshold tuner.** Replace the variable-k sweep in `_tune_threshold` with a fixed-k=384 sweep so the val and test objectives are directly comparable, and the tuner stops being rewarded for "flag everything" strategies.
-2. **Replace weighted-blend ensemble with stacking.** Feed the Isolation Forest score as a column into XGBoost rather than blending the two outputs with hardcoded weights. Lets the supervised model learn the non-linear weighting empirically. This alone is expected to move Precision@k from 0.55 toward 0.75–0.85.
-3. **Recalibrate the cost matrix.** v0's `false_negative_cost_usd = $11,500` understates regulatory exposure (a single SAR-worthy missed alert in production can trigger six-to-seven-figure consent-order penalties). Bumping the FN cost pulls the threshold toward higher-recall regions.
-4. **Add feature caching.** Materialize `data/processed/features.parquet` once and reload on subsequent runs. Drops the 42-minute feature-engineering step to ~30 seconds for iteration.
-5. **GPU-accelerated XGBoost.** `tree_method="hist", device="cuda"` on the new workstation. Cuts the per-trial training time from ~2.5 minutes to seconds; makes ablation studies tractable.
-6. **Fix or remove the Logistic Regression sweep.** Constrain the SAGA + L1 + small-C parameter region that caused the v0 hang, or drop LogReg from the family list entirely with a documented justification.
-7. **Pre-execute notebooks in CI.** Run `jupyter nbconvert --to notebook --execute` on every notebook as part of the test suite so notebook outputs never drift from code reality.
+1. **Fixed the threshold tuner.** Replaced the variable-k sweep in `_tune_threshold` with a fixed-k=384 sweep, so the validation and test objectives are measured at the same operating point and the tuner is no longer rewarded for "flag everything" strategies. Shipped with `tests/test_threshold_tuner.py`.
+2. **Replaced the weighted-blend ensemble with stacking.** The Isolation Forest score is now a feature column inside the gradient-boosted classifier rather than a hardcoded-weight blend; the model learns the non-linear weighting empirically. Precision@k moved from 0.55 to 0.91.
+3. **Recalibrated the cost matrix.** Raised `false_negative_cost_usd` from $11,500 to $16,000 ($8,500 average illicit dollars + $25,000 penalty x 0.30 detection probability), pulling the threshold toward higher-recall regions. The derivation is documented in `configs/cost_matrix.yaml`.
+4. **Added feature caching.** `data/processed/features.parquet` is materialized once and reloaded on subsequent runs (keyed on raw-CSV mtime and sample fraction), dropping the ~42-minute feature build to seconds for iteration.
+5. **GPU-accelerated gradient boosting.** XGBoost runs with `tree_method="hist", device="cuda"` and a safe CPU fallback, cutting per-trial training time substantially on the CUDA workstation.
+6. **Dropped Logistic Regression and Random Forest from the sweep.** Both were cost-prohibitive at 5M rows (Random Forest ~12h, Logistic Regression single-threaded liblinear), so the sweep now runs XGBoost and LightGBM, the real contenders. Documented in [INCIDENT_REPORT.md](docs/INCIDENT_REPORT.md).
 
-### v2 — productionization
+### v2 - productionization
 
+7. **Pre-execute notebooks in CI.** Run `jupyter nbconvert --to notebook --execute` on every notebook as part of CI so notebook outputs never drift from code reality.
 8. **Async ingestion path.** A Celery + Redis worker queue for the triage layer so high-volume scoring is not bottlenecked by LLM latency.
 9. **Postgres backend.** Drop-in replacement for SQLite using the existing repository pattern.
 10. **GitHub Actions CI.** Lint plus tests plus Docker build on every push.

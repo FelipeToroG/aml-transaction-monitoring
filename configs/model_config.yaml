@@ -18,7 +18,7 @@ global:
   # AUC-PR is used as the coarse cross-validation scoring signal during the
   # Optuna sweep because it is fast to compute and dense enough to give the
   # TPE sampler signal. Final selection across families uses cost-weighted
-  # Precision@k from src/evaluation/metrics.py — see EVALUATION.md.
+  # Precision@k from src/evaluation/metrics.py - see EVALUATION.md.
   scoring: average_precision
 
 families:
@@ -31,10 +31,18 @@ families:
       low: 100
       high: 500
       step: 50
+    # Absolute subsample size per tree, NOT a fraction. Isolation Forest is
+    # canonically built on small subsamples (scikit-learn defaults to 256):
+    # small subsamples are what give the algorithm its isolation property and
+    # keep memory flat. A fraction of this dataset is both statistically wrong
+    # and operationally fatal here: on the 3.55M-row training fold a fraction
+    # of ~0.65 isolated ~2.3M samples per tree, driving resident memory past
+    # 46GB and OOM-killing the v1 full train. An absolute 256-1024 range keeps
+    # detection quality high and memory bounded regardless of fold size.
     max_samples:
-      type: float
-      low: 0.3
-      high: 1.0
+      type: int
+      low: 256
+      high: 1024
     contamination:
       type: float
       low: 0.001
@@ -137,46 +145,8 @@ families:
       type: categorical
       choices: [true, false]
 
-  random_forest:
-    n_estimators:
-      type: int
-      low: 100
-      high: 800
-      step: 50
-    max_depth:
-      type: int
-      low: 5
-      high: 30
-    min_samples_split:
-      type: int
-      low: 2
-      high: 20
-    min_samples_leaf:
-      type: int
-      low: 1
-      high: 20
-    max_features:
-      type: categorical
-      choices: [sqrt, log2, 0.5, 0.7]
-    class_weight:
-      type: categorical
-      choices: [balanced, balanced_subsample]
-
-  logistic_regression:
-    # Baseline included so the README can quantify the lift of ensemble
-    # methods over a linear model and demonstrate that the ensemble's
-    # complexity is justified rather than assumed.
-    C:
-      type: float
-      low: 0.001
-      high: 100.0
-      log: true
-    penalty:
-      type: categorical
-      choices: [l1, l2]
-    class_weight:
-      type: categorical
-      choices: [balanced]
-    solver:
-      type: categorical
-      choices: [liblinear, saga]
+  # random_forest and logistic_regression were dropped from the sweep as
+  # cost-prohibitive at full scale: the RF sweep ran ~12h on the 5M-row fold,
+  # and LogReg's single-threaded liblinear trials are glacial at that row count.
+  # Both are baselines; XGBoost and LightGBM are the real contenders, so the
+  # trial budget is spent where it changes the operating point.

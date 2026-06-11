@@ -147,7 +147,7 @@ def temporal_train_val_test_split(
         )
 
     # Sort chronologically. We use stable sort so ties (same-timestamp
-    # transactions) keep their original arrival order — important for
+    # transactions) keep their original arrival order - important for
     # multi-leg laundering flows that share a wall-clock timestamp.
     ordered = frame.sort_values(timestamp_column, kind="stable").reset_index(drop=True)
 

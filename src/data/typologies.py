@@ -48,7 +48,7 @@ class Typology:
         narrator's evidence assembler to prioritise which feature values
         to cite when explaining an alert that matches this pattern.
     regulatory_reference : str
-        Authoritative source — typically FinCEN guidance or a FATF
+        Authoritative source - typically FinCEN guidance or a FATF
         typology report. Surfaces in the narrator output so SAR drafters
         can cite the reference directly when filing.
     """
@@ -128,7 +128,7 @@ TYPOLOGIES: Final[dict[str, Typology]] = {
             "cross_bank_hop_count_24h",
         ),
         regulatory_reference=(
-            "FATF: The Three Stages of Money Laundering — Layering; "
+            "FATF: The Three Stages of Money Laundering - Layering; "
             "FinCEN SAR Narrative Guidance §III.D."
         ),
     ),
@@ -137,7 +137,7 @@ TYPOLOGIES: Final[dict[str, Typology]] = {
         name="Integration",
         description=(
             "Reintroducing laundered funds into the legitimate economy "
-            "through normal-looking commerce — investments, real-estate, or "
+            "through normal-looking commerce - investments, real-estate, or "
             "luxury purchases. Hardest typology to detect from transaction "
             "data alone; the system flags integration via inbound-flow "
             "anomalies on accounts whose historical activity does not "
@@ -149,7 +149,7 @@ TYPOLOGIES: Final[dict[str, Typology]] = {
             "entity_dormant_then_active_flag",
         ),
         regulatory_reference=(
-            "FATF: The Three Stages of Money Laundering — Integration."
+            "FATF: The Three Stages of Money Laundering - Integration."
         ),
     ),
     "rapid_movement": Typology(

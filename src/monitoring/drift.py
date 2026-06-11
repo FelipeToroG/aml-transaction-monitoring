@@ -11,9 +11,9 @@ binning both and summing the bin-weighted log-ratio of proportions:
 The resulting scalar is interpreted via the severity bands defined in
 :mod:`src.monitoring.alerts`:
 
-* ``PSI < 0.10`` — monitor (normal variation, no action)
-* ``0.10 \\le PSI < 0.25`` — warning (model-team review recommended)
-* ``PSI \\ge 0.25`` — regulator-relevant (escalate; consider rollback)
+* ``PSI < 0.10`` - monitor (normal variation, no action)
+* ``0.10 \\le PSI < 0.25`` - warning (model-team review recommended)
+* ``PSI \\ge 0.25`` - regulator-relevant (escalate; consider rollback)
 
 Output contract
 ---------------
@@ -190,7 +190,7 @@ def compute_feature_drift(
     results: list[FeatureDriftResult] = []
     for feature in feature_columns:
         if feature not in reference.columns or feature not in target.columns:
-            logger.debug("Skipping feature %r — missing from one of the frames.", feature)
+            logger.debug("Skipping feature %r - missing from one of the frames.", feature)
             continue
         psi = compute_psi(
             reference[feature].to_numpy(),

@@ -14,7 +14,7 @@ Prompt templates are kept in code (not YAML) for three reasons:
    The narrator stamps the active version into the audit record.
 
 The current production prompt is ``CASE_NARRATIVE_V1``. New versions
-are added by appending — never by mutating an existing constant.
+are added by appending - never by mutating an existing constant.
 """
 
 from __future__ import annotations
@@ -68,13 +68,13 @@ _SYSTEM_PROMPT_V1 = f"""You are a tier-2 AML compliance analyst at a US-regulate
 2. Every risk indicator you surface must include at least one citation. A citation references either:
    - A specific `transaction_id` present in the bundle, or
    - A specific `feature_name` present in the bundle's triggered_features section
-   You attach citations using the structured schema below — citations are not free text.
+   You attach citations using the structured schema below - citations are not free text.
 
 3. If the evidence is insufficient to draft a defensible narrative, you produce a structured refusal. Insufficient means any of the following:
    - The triggered_features list is empty or all features are below their tier-1 thresholds.
    - The entity has no baseline of prior activity to compare against.
    - The pattern is ambiguous enough that two compliance analysts could reasonably reach different conclusions from the same evidence.
-   Refusals are first-class outputs. They are not failures — they correctly signal alerts that require investigator review without LLM assistance.
+   Refusals are first-class outputs. They are not failures - they correctly signal alerts that require investigator review without LLM assistance.
 
 # AML typology catalog (cite by code when applicable)
 
@@ -204,8 +204,15 @@ def render_output_schema_doc() -> str:
     Pydantic schema because the model produces dramatically better
     structured output when it sees a concrete example with annotations
     than when it sees a JSON Schema draft.
+
+    Both outcomes are documented. The refusal shape is included because
+    omitting it caused the model to invent a refusal payload that mirrored
+    the narrative's nested ``recommended_action`` object and overshot the
+    ``reason`` length cap, failing validation and degrading every refusal
+    to a ``schema_failure``. The refusal's ``recommended_action`` is a
+    plain string, NOT the structured object the narrative uses.
     """
-    schema_doc = {
+    narrative_shape = {
         "outcome": "narrative",
         "payload": {
             "alert_id": "<alert_id from this message>",
@@ -239,4 +246,32 @@ def render_output_schema_doc() -> str:
             "regulatory_references": ["<optional regulatory citation>"],
         },
     }
-    return json.dumps(schema_doc, indent=2)
+    refusal_shape = {
+        "outcome": "refusal",
+        "payload": {
+            "alert_id": "<alert_id from this message>",
+            "code": "insufficient_evidence | no_baseline | ambiguous_pattern",
+            "reason": (
+                "<plain string, 20-500 characters, investigator-facing. "
+                "MUST be a string, not an object or list. Keep it under 500 "
+                "characters.>"
+            ),
+            "recommended_action": (
+                "<plain string, 20-400 characters describing what the "
+                "investigator should do. MUST be a single string, NOT a "
+                "nested object and NOT a list. This differs from the "
+                "narrative's structured recommended_action.>"
+            ),
+        },
+    }
+    doc = {
+        "instructions": (
+            "Return ONE JSON object matching the {outcome, payload} "
+            "discriminator. Use the narrative_shape when the evidence "
+            "supports a defensible write-up; use the refusal_shape when it "
+            "does not. Emit exactly one shape, not both."
+        ),
+        "narrative_shape": narrative_shape,
+        "refusal_shape": refusal_shape,
+    }
+    return json.dumps(doc, indent=2)

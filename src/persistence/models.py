@@ -2,15 +2,15 @@
 
 Three tables capture the full alert lifecycle:
 
-* :class:`Alert` — one row per scored transaction that crossed the
+* :class:`Alert` - one row per scored transaction that crossed the
   alert threshold. Carries the alert's score breakdown, the assigned
   tier, the assembled evidence bundle, the generated narrative (or
   refusal), and the current operational status.
-* :class:`Feedback` — investigator dispositions recorded against
+* :class:`Feedback` - investigator dispositions recorded against
   alerts. One alert may have multiple feedback entries over time (a
   tier-1 alert escalated to tier-2 review accumulates a chain of
   feedbacks).
-* :class:`AuditLog` — append-only event stream. Every state transition
+* :class:`AuditLog` - append-only event stream. Every state transition
   on an alert, every model load, every drift-detection event lands
   here. Regulators reviewing a historical incident query this table.
 

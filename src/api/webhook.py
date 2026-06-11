@@ -90,14 +90,14 @@ class WebhookClient:
         """Dispatch a new-alert notification.
 
         Returns a structured result so the caller can log the outcome
-        to the audit log. No exception is raised on final failure —
+        to the audit log. No exception is raised on final failure - 
         delivery failures are an expected operational condition.
         """
         if not self.enabled:
             # Disabled-by-config is a normal state, not an error. Return
             # a delivered=False result with no attempts so the audit log
             # records the no-op decision. Metric is not incremented for
-            # disabled deliveries — they are not failures.
+            # disabled deliveries - they are not failures.
             return WebhookDeliveryResult(
                 delivered=False,
                 attempts=0,
@@ -145,7 +145,7 @@ class WebhookClient:
                             f"Webhook returned {response.status_code}; will retry."
                         )
                     if response.status_code >= 400:
-                        # 4xx is a client error — likely a misconfigured
+                        # 4xx is a client error - likely a misconfigured
                         # URL. Retrying will not help; surface and stop.
                         last_error = (
                             f"Webhook target returned {response.status_code}: "
@@ -199,7 +199,7 @@ class WebhookClient:
         suspected_typology: str | None,
     ) -> dict[str, Any]:
         """Construct the Slack-compatible block payload."""
-        summary_text = narrative_summary or "Triage pending — review in dashboard."
+        summary_text = narrative_summary or "Triage pending - review in dashboard."
         typology_text = (
             f"\n*Suspected typology:* {suspected_typology}"
             if suspected_typology
